@@ -108,7 +108,7 @@ function DSRBar({ label, value }: { label: string; value: number }) {
 interface Props { onClose: () => void }
 
 export default function EbayProfile({ onClose }: Props) {
-  const { collection, ebayRep, stats } = useGameStore()
+  const { collection, ebayRep } = useGameStore()
   const repInfo = ebayRepInfo(ebayRep)
   const totalScore = ebayRep.positive
   const pct = ebayRep.feedback > 0 ? Math.round((ebayRep.positive / ebayRep.feedback) * 1000) / 10 : 100

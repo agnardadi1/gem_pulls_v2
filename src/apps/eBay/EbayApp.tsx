@@ -15,7 +15,7 @@ export default function EbayApp() {
   const { collection, ebayRep, updateCard, addEarnings } = useGameStore()
   const pushNotif = useNotificationStore(s => s.push)
   const [view, setView] = useState<View>('listings')
-  const [tick, setTick] = useState(0)
+  const [, setTick] = useState(0)
 
   // Listing flow state
   const [listCard, setListCard] = useState<Card | null>(null)
@@ -60,7 +60,7 @@ export default function EbayApp() {
     if (!latest || latest.sold) return
     const repNow = useGameStore.getState().ebayRep
     const { soldPrice, failReason, newRep } = resolveEbay(latest, repNow)
-    useGameStore.setState(s => ({ ebayRep: newRep }))
+    useGameStore.setState(() => ({ ebayRep: newRep }))
     if (soldPrice !== null) {
       updateCard(c.cid, { sold: true, listed: false, sellPrice: soldPrice, ebaySoldPrice: soldPrice, ebayFeeAmt: Math.round((latest.ebayPrice || 0) * EBAY_FEE_RATE * 100) / 100 })
       addEarnings(soldPrice)
