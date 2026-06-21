@@ -55,7 +55,7 @@ const APP_ICONS: Record<AppId, React.ReactNode> = {
 }
 
 export default function Phone() {
-  const { activeApp, openApp } = usePhoneStore()
+  const { activeApp, openApp, closeApp } = usePhoneStore()
   const { wallpaper } = useGameStore()
   const notifications = useNotificationStore(s => s.notifications)
   const [time, setTime] = useState(() =>
@@ -274,8 +274,19 @@ export default function Phone() {
         )}
       </div>
 
-      {/* Home indicator */}
-      <div className="absolute bottom-[6px] left-1/2 -translate-x-1/2 w-[134px] h-[5px] bg-white/30 rounded-full z-50" />
+      {/* Home indicator — tap to return to home screen when an app is open */}
+      {ActiveApp ? (
+        <button
+          onClick={closeApp}
+          aria-label="Home"
+          className="absolute bottom-0 left-1/2 -translate-x-1/2 z-50 flex items-end justify-center cursor-pointer"
+          style={{ width: '150px', height: '15px', background: 'none', border: 'none', paddingBottom: '5px' }}
+        >
+          <span className="w-[134px] h-[5px] bg-black/35 rounded-full" />
+        </button>
+      ) : (
+        <div className="absolute bottom-[6px] left-1/2 -translate-x-1/2 w-[134px] h-[5px] bg-white/30 rounded-full z-50" />
+      )}
     </div>
   )
 }

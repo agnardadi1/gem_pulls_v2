@@ -35,6 +35,50 @@ const COMMENTERS = [
   'hoop_collector22', 'nba_grails', 'tradebinder_og', 'cardflip_king', 'wax_wizard',
   'pcards_daily', 'slab_society', 'court_kings_co', 'the_break_room', 'mint_or_bust',
 ]
+const SELLERS = ['vintage_vault', 'slab_society', 'breakroom_bob', 'gem_mint_gary', 'the_card_plug', 'pristine_pulls', 'hobby_hank', 'wax_and_wane']
+
+// ─── Explore deals: more & better deals as your following grows ───
+function dealTier(followers: number) {
+  if (followers >= 2500) return { count: 16, minDisc: 0.18, maxDisc: 0.46, maxVal: Infinity, label: 'Insider deals' }
+  if (followers >= 800)  return { count: 11, minDisc: 0.12, maxDisc: 0.34, maxVal: Infinity, label: 'Trusted buyer' }
+  if (followers >= 250)  return { count: 7,  minDisc: 0.08, maxDisc: 0.24, maxVal: 800,      label: 'Growing reach' }
+  if (followers >= 60)   return { count: 5,  minDisc: 0.05, maxDisc: 0.16, maxVal: 350,      label: 'Getting noticed' }
+  return                        { count: 3,  minDisc: 0.03, maxDisc: 0.11, maxVal: 200,      label: 'New on the scene' }
+}
+
+const BUY_RARITY: Record<string, Card['rarity']> = { common: 'common', uncommon: 'uncommon', rare: 'rare', chase: 'legendary' }
+
+export interface Deal {
+  id: string
+  cardId: string
+  playerName: string
+  cardSet: string
+  variant: string
+  rarity: string
+  market: number
+  price: number
+  discountPct: number
+  seller: string
+  imageUrl: string
+}
+
+function genDeals(followers: number, seedNum: number): Deal[] {
+  const tier = dealTier(followers)
+  const rng = makeRng('deals-' + seedNum + '-' + tier.count)
+  const pool = CARDS.filter(c => c.actualEbayPrice <= tier.maxVal)
+  // Fisher-Yates with seeded rng
+  const arr = [...pool]
+  for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]] }
+  return arr.slice(0, Math.min(tier.count, arr.length)).map((c, i) => {
+    const disc = tier.minDisc + rng() * (tier.maxDisc - tier.minDisc)
+    const price = Math.max(1, Math.round(c.actualEbayPrice * (1 - disc) * 100) / 100)
+    return {
+      id: `${seedNum}-${c.id}-${i}`, cardId: c.id, playerName: c.playerName, cardSet: c.cardSet,
+      variant: c.variant, rarity: c.rarity, market: c.actualEbayPrice, price,
+      discountPct: Math.round(disc * 100), seller: SELLERS[Math.floor(rng() * SELLERS.length)], imageUrl: c.imageUrl,
+    }
+  })
+}
 
 function relTime(ts: number) {
   const s = Math.floor((Date.now() - ts) / 1000)
@@ -94,13 +138,16 @@ function RarityTag({ rarity }: { rarity: string }) {
 
 export default function InstagramApp() {
   const { closeApp } = usePhoneStore()
-  const { collection, updateCard, addEarnings, spendBankroll, addCard, bankroll, level, stats, igProfile, setIgProfile } = useGameStore()
+  const { collection, updateCard, addEarnings, spendBankroll, addCard, bankroll, setBankroll, stats, igProfile, setIgProfile } = useGameStore()
   const pushNotif = useNotificationStore(s => s.push)
 
   const [tab, setTab] = useState<Tab>('home')
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [activeOffer, setActiveOffer] = useState<{ offer: IgOffer; card: Card } | null>(null)
   const [tradeConfirm, setTradeConfirm] = useState<{ offer: IgOffer; card: Card } | null>(null)
+  const [buyDeal, setBuyDeal] = useState<Deal | null>(null)
+  const [boughtDeals, setBoughtDeals] = useState<Set<string>>(new Set())
+  const [dealSeed, setDealSeed] = useState(() => Math.floor(Date.now() / 60000))
   const [menuOpen, setMenuOpen] = useState(false)
   const [postMenu, setPostMenu] = useState<string | null>(null)
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set())
@@ -135,9 +182,32 @@ export default function InstagramApp() {
 
   const unreadCount = allConversations.filter(c => c.offer.status === 'pending' && c.offer.expiresAt > Date.now()).length
 
-  const followers = 842 + level * 640 + igSold.length * 128 + Math.floor(stats.allEarned / 40)
+  // Followers start at 0 and grow as you close deals (sales + trades + total earnings)
+  const followers = igSold.length * 60 + Math.floor(stats.allEarned / 25)
   const totalPosts = igPosts.length + igSold.length
-  const verified = level >= 3 || igSold.length >= 5
+  const verified = igSold.length >= 8 || stats.allEarned >= 10000
+
+  const tier = dealTier(followers)
+  const deals = useMemo(
+    () => genDeals(followers, dealSeed).filter(d => !boughtDeals.has(d.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dealSeed, tier.count, boughtDeals]
+  )
+
+  function doBuy(deal: Deal) {
+    if (bankroll < deal.price) return
+    setBankroll(bankroll - deal.price)
+    addCard({
+      cid: `buy-${Date.now()}`,
+      playerName: deal.playerName, cardSet: deal.cardSet, variant: deal.variant,
+      rarity: BUY_RARITY[deal.rarity] ?? 'common',
+      actualEbayPrice: deal.market, imageUrl: deal.imageUrl,
+      pulledAt: Date.now(), sold: false, listed: false, sellPrice: null,
+    })
+    setBoughtDeals(s => new Set(s).add(deal.id))
+    pushNotif('instagram', 'Purchase complete', `You bought ${deal.playerName} for $${deal.price.toFixed(2)}`)
+    setBuyDeal(null)
+  }
 
   // ── actions ──
   function postCard(card: Card) {
@@ -233,6 +303,37 @@ export default function InstagramApp() {
           {!canAfford && <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px', fontSize: '13px', color: '#dc2626' }}>Not enough bankroll for the ${offer.amount?.toFixed(2)} you'd add.</div>}
           <GradientButton disabled={!canAfford} onClick={() => acceptTrade(card, offer)}>Confirm trade</GradientButton>
           <button onClick={() => setTradeConfirm(null)} style={ghostBtn}>Cancel</button>
+        </div>
+      </Sheet>
+    )
+  }
+
+  // ── BUY DEAL CONFIRM ──
+  if (buyDeal) {
+    const canAfford = bankroll >= buyDeal.price
+    const meta = RARITY_META[(BUY_RARITY[buyDeal.rarity] as Rarity)] ?? RARITY_META.common
+    return (
+      <Sheet title="Buy card" onBack={() => setBuyDeal(null)}>
+        <div style={{ padding: '20px 16px' }}>
+          <div style={{ background: '#fff', border: '1px solid #efefef', borderRadius: '16px', overflow: 'hidden', marginBottom: '18px' }}>
+            <div style={{ position: 'relative', height: '220px', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {buyDeal.imageUrl ? <img src={buyDeal.imageUrl} alt={buyDeal.playerName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <div style={{ width: '100%', height: '100%', background: meta.color }} />}
+              <div style={{ position: 'absolute', top: '12px', left: '12px', background: '#16a34a', color: '#fff', borderRadius: '8px', padding: '4px 10px', fontFamily: BC, fontSize: '15px', fontWeight: 800 }}>−{buyDeal.discountPct}%</div>
+            </div>
+            <div style={{ padding: '14px' }}>
+              <div style={{ fontFamily: BC, fontSize: '20px', fontWeight: 800 }}>{buyDeal.playerName}</div>
+              <div style={{ fontSize: '12px', color: '#8e8e8e', marginBottom: '6px' }}>{buyDeal.cardSet} · {buyDeal.variant}</div>
+              <RarityTag rarity={BUY_RARITY[buyDeal.rarity]} />
+              <div style={{ fontSize: '12px', color: '#8e8e8e', marginTop: '8px' }}>Listed by @{buyDeal.seller}</div>
+            </div>
+          </div>
+          <Row label="Market value" value={`$${buyDeal.market.toFixed(2)}`} muted strike />
+          <Row label="Deal price" value={`$${buyDeal.price.toFixed(2)}`} big />
+          <Row label="You save" value={`$${(buyDeal.market - buyDeal.price).toFixed(2)}`} green />
+          <div style={{ height: '12px' }} />
+          {!canAfford && <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '12px', padding: '12px 14px', marginBottom: '12px', fontSize: '13px', color: '#dc2626' }}>Not enough bankroll. You have ${bankroll.toFixed(2)}.</div>}
+          <GradientButton disabled={!canAfford} onClick={() => doBuy(buyDeal)}>Buy for ${buyDeal.price.toFixed(2)}</GradientButton>
+          <button onClick={() => setBuyDeal(null)} style={ghostBtn}>Cancel</button>
         </div>
       </Sheet>
     )
@@ -455,7 +556,8 @@ export default function InstagramApp() {
           postMenu={postMenu} setPostMenu={setPostMenu} onUnpost={unpost} onOpenOffers={(card: Card) => { const o = visibleOffers(card)[0]; if (o) { setActiveOffer({ offer: o, card }); setOverlay('thread') } else { setOverlay('inbox') } }}
           visibleOffersCount={(c: Card) => visibleOffers(c).length} onPost={() => setOverlay('post')} />}
 
-        {tab === 'search' && <Explore search={search} />}
+        {tab === 'search' && <Explore search={search} deals={deals} followers={followers} tierLabel={tier.label} bankroll={bankroll}
+          onBuy={(d: Deal) => setBuyDeal(d)} onRefresh={() => { setBoughtDeals(new Set()); setDealSeed(s => s + 1) }} />}
 
         {tab === 'activity' && <Activity conversations={allConversations} onOpen={(offer: IgOffer, card: Card) => { setActiveOffer({ offer, card }); setOverlay('thread') }} />}
 
@@ -592,26 +694,65 @@ function Feed({ posts, liked, onLike, profile, verified, postMenu, setPostMenu, 
   )
 }
 
-function Explore({ search }: { search: string }) {
+function Explore({ search, deals, followers, tierLabel, bankroll, onBuy, onRefresh }: {
+  search: string; deals: Deal[]; followers: number; tierLabel: string; bankroll: number
+  onBuy: (d: Deal) => void; onRefresh: () => void
+}) {
   const filtered = search.trim()
-    ? CARDS.filter(c => (c.playerName + ' ' + c.cardSet).toLowerCase().includes(search.toLowerCase()))
-    : CARDS
+    ? deals.filter(d => (d.playerName + ' ' + d.cardSet + ' ' + d.seller).toLowerCase().includes(search.toLowerCase()))
+    : deals
+  const nextTierAt = followers < 60 ? 60 : followers < 250 ? 250 : followers < 800 ? 800 : followers < 2500 ? 2500 : null
+
   return (
     <div>
-      {search.trim() && <div style={{ padding: '10px 14px', fontSize: '13px', color: '#8e8e8e' }}>{filtered.length} result{filtered.length !== 1 ? 's' : ''} for "{search}"</div>}
+      {/* reach banner */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderBottom: '1px solid #efefef' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#d62976' }} />{tierLabel}
+          </div>
+          <div style={{ fontSize: '12px', color: '#8e8e8e', marginTop: '2px' }}>
+            {nextTierAt ? `${(nextTierAt - followers).toLocaleString()} more followers unlocks more & better deals` : 'Top tier — best deals unlocked'}
+          </div>
+        </div>
+        <button onClick={onRefresh} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#efefef', border: 'none', borderRadius: '99px', padding: '7px 12px', fontSize: '12px', fontWeight: 700, color: '#262626', cursor: 'pointer' }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#262626" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+          Refresh
+        </button>
+      </div>
+
       {filtered.length === 0 ? (
-        <Empty title="No results" sub="Try another player or set name." />
+        <Empty title={search.trim() ? 'No deals match' : 'No deals right now'} sub={search.trim() ? 'Try another player or set.' : 'Pull to refresh or grow your following for more.'} />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '2px' }}>
-          {filtered.map(c => (
-            <div key={c.id} style={{ position: 'relative', aspectRatio: '1/1', background: '#f3f4f6', overflow: 'hidden' }}>
-              <img src={c.imageUrl} alt={c.playerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '14px 6px 4px', background: 'linear-gradient(transparent,rgba(0,0,0,0.7))', color: '#fff' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.playerName}</div>
-                <div style={{ fontFamily: BC, fontSize: '12px', fontWeight: 800, color: '#86efac' }}>${c.actualEbayPrice.toFixed(0)}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', padding: '12px' }}>
+          {filtered.map(d => {
+            const meta = RARITY_META[(BUY_RARITY[d.rarity] as Rarity)] ?? RARITY_META.common
+            const affordable = bankroll >= d.price
+            return (
+              <div key={d.id} style={{ background: '#fff', border: '1px solid #efefef', borderRadius: '14px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ position: 'relative', height: '130px', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {d.imageUrl ? <img src={d.imageUrl} alt={d.playerName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <div style={{ width: '100%', height: '100%', background: meta.color }} />}
+                  <div style={{ position: 'absolute', top: '8px', left: '8px', background: '#16a34a', color: '#fff', borderRadius: '6px', padding: '2px 7px', fontFamily: BC, fontSize: '13px', fontWeight: 800 }}>−{d.discountPct}%</div>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: meta.textColor }} />
+                </div>
+                <div style={{ padding: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ fontFamily: BC, fontSize: '15px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.playerName}</div>
+                  <div style={{ fontSize: '10px', color: '#8e8e8e', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{d.seller}</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                    <span style={{ fontFamily: BC, fontSize: '18px', fontWeight: 800, color: '#16a34a' }}>${d.price.toFixed(2)}</span>
+                    <span style={{ fontSize: '11px', color: '#bbb', textDecoration: 'line-through' }}>${d.market.toFixed(0)}</span>
+                  </div>
+                  <button onClick={() => onBuy(d)} style={{
+                    marginTop: '8px', width: '100%', padding: '8px', borderRadius: '8px', border: 'none',
+                    background: affordable ? IG_GRADIENT : '#efefef', color: affordable ? '#fff' : '#aaa',
+                    fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: BC, letterSpacing: '0.3px',
+                  }}>
+                    {affordable ? 'Buy' : 'Too pricey'}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -780,6 +921,14 @@ function NavBtn({ onClick, children }: any) {
 }
 function Stat({ n, label }: { n: any; label: string }) {
   return <div><div style={{ fontSize: '18px', fontWeight: 700, lineHeight: 1.1 }}>{n}</div><div style={{ fontSize: '13px', color: '#262626' }}>{label}</div></div>
+}
+function Row({ label, value, muted, strike, big, green }: { label: string; value: string; muted?: boolean; strike?: boolean; big?: boolean; green?: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f3f3f3' }}>
+      <span style={{ fontSize: '14px', color: '#8e8e8e' }}>{label}</span>
+      <span style={{ fontFamily: BC, fontSize: big ? '22px' : '16px', fontWeight: 800, color: green ? '#16a34a' : muted ? '#999' : '#000', textDecoration: strike ? 'line-through' : 'none' }}>{value}</span>
+    </div>
+  )
 }
 function MenuItem({ label, onClick, danger }: any) {
   return <button onClick={onClick} style={{ width: '100%', textAlign: 'left', padding: '13px 16px', background: 'none', border: 'none', borderBottom: '1px solid #f3f3f3', fontSize: '14px', fontWeight: 600, color: danger ? '#ed4956' : '#000', cursor: 'pointer' }}>{label}</button>

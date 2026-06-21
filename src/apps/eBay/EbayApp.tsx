@@ -36,9 +36,9 @@ export default function EbayApp() {
     return () => clearInterval(id)
   }, [collection, ebayRep])
 
-  // On mount: resume any pending auctions
+  // On mount: resume any pending auctions (eBay listings only — never Instagram posts)
   useEffect(() => {
-    collection.filter(c => c.listed && !c.sold).forEach(c => schedCard(c))
+    collection.filter(c => c.platform === 'ebay' && c.listed && !c.sold).forEach(c => schedCard(c))
   }, [])
 
   function schedCard(c: Card) {
@@ -141,10 +141,10 @@ export default function EbayApp() {
     resetFlow()
   }
 
-  // Listing data
-  const active = collection.filter(c => c.listed && !c.sold && !c.ebayFailed)
+  // Listing data — all scoped to eBay platform so Instagram posts never leak in
+  const active = collection.filter(c => c.platform === 'ebay' && c.listed && !c.sold && !c.ebayFailed)
   const sold = collection.filter(c => c.sold && c.platform === 'ebay' && !c.auctionCleared)
-  const failed = collection.filter(c => c.ebayFailed && !c.auctionCleared)
+  const failed = collection.filter(c => c.platform === 'ebay' && c.ebayFailed && !c.auctionCleared)
   const available = collection.filter(c => !c.sold && !c.listed)
 
   const repInfo = ebayRepInfo(ebayRep)
