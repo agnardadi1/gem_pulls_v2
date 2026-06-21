@@ -462,15 +462,21 @@ export default function InstagramApp() {
                   <div style={{ fontSize: '12px', color: '#888', marginBottom: '10px' }}>
                     {card.cardSet} · <RarityDot rarity={card.rarity} />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '12px', color: '#aaa' }}>{totalOffers} offer{totalOffers !== 1 ? 's' : ''}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between' }}>
+                    <button onClick={() => unpostCard(card)} style={{
+                      fontSize: '12px', color: '#aaa', background: 'none',
+                      border: '1px solid #e5e7eb', borderRadius: '8px',
+                      padding: '7px 12px', cursor: 'pointer',
+                    }}>
+                      Remove
+                    </button>
                     <button onClick={() => { setSelectedCard(card); setView('offers') }} style={{
                       padding: '7px 16px', borderRadius: '8px', border: 'none',
                       background: pending > 0 ? IG_GRADIENT : '#f3f4f6',
                       color: pending > 0 ? '#fff' : '#333',
                       fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: BC,
                     }}>
-                      View DMs
+                      {totalOffers > 0 ? `View DMs (${totalOffers})` : 'View DMs'}
                     </button>
                   </div>
                 </div>
