@@ -1,4 +1,5 @@
 import type { Card, IgOffer } from '../../types'
+import { CARDS } from '../PackMarket/packData'
 
 const PERSONAS = [
   { user: 'cardflip_king',    avatar: '#E53238', style: 'lowball' },
@@ -10,20 +11,16 @@ const PERSONAS = [
   { user: 'wax_wizard',       avatar: '#06b6d4', style: 'trader' },
 ]
 
-const TRADE_CARDS = [
-  { playerName: 'LeBron James',      cardSet: '2020 Prizm',         rarity: 'rare',      value: 85  },
-  { playerName: 'Stephen Curry',     cardSet: '2021 Select',        rarity: 'ultra_rare', value: 120 },
-  { playerName: 'Kevin Durant',      cardSet: '2019 Optic',         rarity: 'rare',      value: 65  },
-  { playerName: 'Luka Dončić',       cardSet: '2022 Mosaic',        rarity: 'ultra_rare', value: 150 },
-  { playerName: 'Jayson Tatum',      cardSet: '2021 Prizm',         rarity: 'uncommon',  value: 40  },
-  { playerName: 'Nikola Jokić',      cardSet: '2020 Donruss',       rarity: 'rare',      value: 75  },
-  { playerName: 'Joel Embiid',       cardSet: '2022 Hoops',         rarity: 'uncommon',  value: 35  },
-  { playerName: 'Zion Williamson',   cardSet: '2019 Prizm RC',      rarity: 'ultra_rare', value: 200 },
-  { playerName: 'Devin Booker',      cardSet: '2021 Select',        rarity: 'rare',      value: 90  },
-  { playerName: 'Damian Lillard',    cardSet: '2020 Optic',         rarity: 'rare',      value: 55  },
-  { playerName: 'Anthony Edwards',   cardSet: '2020 Mosaic RC',     rarity: 'ultra_rare', value: 180 },
-  { playerName: 'Tyrese Haliburton', cardSet: '2020 Prizm RC',      rarity: 'uncommon',  value: 30  },
-]
+// Map rarity from packData to Card rarity type
+const rarityMap: Record<string, string> = { common: 'common', uncommon: 'uncommon', rare: 'rare', chase: 'legendary' }
+
+const TRADE_CARDS = CARDS.map(c => ({
+  playerName: c.playerName,
+  cardSet: c.cardSet,
+  rarity: rarityMap[c.rarity] ?? 'common',
+  value: c.actualEbayPrice,
+  imageUrl: c.imageUrl,
+}))
 
 const MESSAGES = {
   lowball: [
@@ -123,7 +120,7 @@ export function genIgOffers(card: Card, postedAt: number): IgOffer[] {
           user: persona.user,
           avatar: persona.avatar,
           type: 'trade',
-          tradeCard: { ...tradeCard, imageUrl: '' },
+          tradeCard: { ...tradeCard },
           cashSide,
           amount,
           message: pick(MESSAGES[persona.style as keyof typeof MESSAGES]),
