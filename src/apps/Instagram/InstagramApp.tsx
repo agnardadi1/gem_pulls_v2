@@ -170,6 +170,9 @@ export default function InstagramApp() {
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
   const [, setTick] = useState(0)
+  const [counterMode, setCounterMode] = useState(false)
+  const [counterCash, setCounterCash] = useState(0)
+  const [counterResult, setCounterResult] = useState<{ offerId: string; price: number; accepted: boolean } | null>(null)
 
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 2000)
@@ -330,6 +333,21 @@ export default function InstagramApp() {
 
   function declineOffer(card: Card, offer: IgOffer) {
     updateCard(card.cid, { igOffers: (card.igOffers || []).map(o => o.id === offer.id ? { ...o, status: 'declined' as const } : o) })
+  }
+
+  function sendCounter(card: Card, offer: IgOffer, price: number) {
+    const ratio = price / card.actualEbayPrice
+    const acceptChance = ratio <= 0.95 ? 0.88 : ratio <= 1.0 ? 0.68 : ratio <= 1.1 ? 0.38 : 0.12
+    const accepted = Math.random() < acceptChance
+    if (accepted) {
+      updateCard(card.cid, { sold: true, listed: false, sellPrice: price, platform: 'instagram', igOffers: settleOthers(card, offer.id) })
+      addEarnings(price)
+      pushNotif('instagram', 'Counter accepted!', `@${offer.user} accepted $${price.toFixed(2)} for ${card.playerName}`)
+    } else {
+      updateCard(card.cid, { igOffers: (card.igOffers || []).map(o => o.id === offer.id ? { ...o, status: 'declined' as const } : o) })
+    }
+    setCounterResult({ offerId: offer.id, price, accepted })
+    setCounterMode(false)
   }
 
   function unpost(card: Card) {
@@ -565,7 +583,7 @@ export default function InstagramApp() {
               ? `Trade: ${offer.tradeCard!.playerName}${offer.amount ? (offer.cashSide === 'buyer' ? ` +$${offer.amount}` : ` (you +$${offer.amount})`) : ''}`
               : `Offer: $${offer.amount!.toFixed(2)}`
             return (
-              <button key={offer.id} onClick={() => { setActiveOffer({ offer, card }); setOverlay('thread') }}
+              <button key={offer.id} onClick={() => { setActiveOffer({ offer, card }); setCounterMode(false); setCounterResult(null); setOverlay('thread') }}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                 <Avatar color={offer.avatar} label={offer.user} size={54} ring={pending} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -623,47 +641,114 @@ export default function InstagramApp() {
           </div>
 
           {/* offer bubble */}
-          <div style={{ alignSelf: 'flex-start', maxWidth: '85%', width: '100%' }}>
-            <div style={{ border: '1.5px solid', borderColor: status === 'accepted' ? '#86efac' : '#dbdbdb', borderRadius: '16px', overflow: 'hidden' }}>
-              <div style={{ background: IG_GRADIENT, padding: '8px 14px', color: '#fff', fontSize: '12px', fontWeight: 700, letterSpacing: '0.3px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>{offer.type === 'trade' ? 'TRADE OFFER' : 'CASH OFFER'}</span>
-                {status === 'pending' && <span>{expiresIn(offer.expiresAt)}</span>}
-              </div>
-              <div style={{ padding: '14px' }}>
+          {(() => {
+            const myCounter = counterResult?.offerId === offer.id ? counterResult : null
+            const payStyle = offer.user.charCodeAt(0) % 2 === 0 ? 'apple' : 'paypal'
+            const fmtAmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            return (
+              <div style={{ alignSelf: 'flex-start', maxWidth: '85%', width: '100%' }}>
                 {offer.type === 'money' ? (
-                  <div style={{ textAlign: 'center', fontFamily: BC, fontSize: '34px', fontWeight: 800, color: '#16a34a' }}>${offer.amount!.toFixed(2)}</div>
-                ) : (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontFamily: BC, fontWeight: 700, fontSize: '17px' }}>{offer.tradeCard!.playerName}</div>
-                        <div style={{ fontSize: '11px', color: '#8e8e8e' }}>{offer.tradeCard!.cardSet}</div>
-                        <RarityTag rarity={offer.tradeCard!.rarity} />
+                  // Apple Cash / PayPal style payment bubble
+                  <div style={{ borderRadius: '20px', overflow: 'hidden', border: `1.5px solid ${status === 'accepted' ? '#86efac' : '#e0e0e0'}` }}>
+                    {payStyle === 'apple' ? (
+                      <div style={{ background: '#1c1c1e', padding: '18px 22px 22px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '14px' }}>
+                          <svg width="14" height="17" viewBox="0 0 14 17" fill="white"><path d="M11.7 9c0-2.5 2.1-3.7 2.2-3.8-1.2-1.7-3-2-3.7-2-1.6-.1-3 .9-3.8.9-.8 0-2-.9-3.3-.9-1.7 0-3.2 1-4 2.4C-2.6 8.5-1.3 13 .3 15.5c.8 1.2 1.7 2.5 3 2.5 1.2-.1 1.6-.8 3.1-.8 1.5 0 1.8.8 3.1.8 1.3 0 2.1-1.2 2.9-2.4.6-.8 1-1.7 1.2-1.8-.1 0-2-.8-2-2.8zM9.4 2.6C10.1 1.8 10.5.7 10.3-.3c-1 .1-2.1.6-2.8 1.4-.6.7-1.1 1.7-.9 2.7 1 .1 2-.4 2.8-1.2z"/></svg>
+                          <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: '15px', fontWeight: 500 }}>Cash</span>
+                        </div>
+                        <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', fontSize: '46px', fontWeight: 200, color: '#fff', letterSpacing: '-2px', lineHeight: 1 }}>${fmtAmt(offer.amount!)}</div>
+                        <div style={{ marginTop: '10px', fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>
+                          {status === 'pending' ? expiresIn(offer.expiresAt) : status === 'accepted' ? '✓ Accepted' : status === 'expired' ? 'Expired' : 'Declined'}
+                        </div>
                       </div>
-                      <span style={{ fontFamily: BC, fontSize: '20px', fontWeight: 800, color: '#555' }}>${offer.tradeCard!.value.toFixed(2)}</span>
-                    </div>
-                    {offer.cashSide && offer.amount && (
-                      <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #efefef', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '12px', color: '#8e8e8e' }}>{offer.cashSide === 'buyer' ? `@${offer.user} adds cash` : 'You add cash'}</span>
-                        <span style={{ fontFamily: BC, fontSize: '17px', fontWeight: 800, color: offer.cashSide === 'buyer' ? '#16a34a' : '#ea580c' }}>{offer.cashSide === 'buyer' ? '+' : '−'}${offer.amount.toFixed(2)}</span>
+                    ) : (
+                      <div style={{ background: '#fff', padding: '18px 22px 22px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '14px' }}>
+                          <div style={{ display: 'flex' }}>
+                            <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#003087', zIndex: 1 }} />
+                            <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#009cde', marginLeft: '-8px' }} />
+                          </div>
+                          <span style={{ color: '#003087', fontSize: '15px', fontWeight: 700, letterSpacing: '-0.3px' }}>PayPal</span>
+                        </div>
+                        <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', fontSize: '46px', fontWeight: 300, color: '#003087', letterSpacing: '-2px', lineHeight: 1 }}>${fmtAmt(offer.amount!)}</div>
+                        <div style={{ marginTop: '10px', fontSize: '12px', color: '#aaa' }}>
+                          {status === 'pending' ? expiresIn(offer.expiresAt) : status === 'accepted' ? '✓ Accepted' : status === 'expired' ? 'Expired' : 'Declined'}
+                        </div>
                       </div>
                     )}
-                  </>
-                )}
-                {status !== 'pending' && (
-                  <div style={{ marginTop: '12px', textAlign: 'center', fontSize: '13px', fontWeight: 700, color: status === 'accepted' ? '#16a34a' : status === 'expired' ? '#f59e0b' : '#8e8e8e' }}>
-                    {status === 'accepted' ? 'You accepted this offer' : status === 'expired' ? 'This offer expired' : 'You declined this offer'}
+                  </div>
+                ) : (
+                  // Trade offer bubble (original style)
+                  <div style={{ border: '1.5px solid', borderColor: status === 'accepted' ? '#86efac' : '#dbdbdb', borderRadius: '16px', overflow: 'hidden' }}>
+                    <div style={{ background: IG_GRADIENT, padding: '8px 14px', color: '#fff', fontSize: '12px', fontWeight: 700, letterSpacing: '0.3px', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>TRADE OFFER</span>
+                      {status === 'pending' && <span>{expiresIn(offer.expiresAt)}</span>}
+                    </div>
+                    <div style={{ padding: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontFamily: BC, fontWeight: 700, fontSize: '17px' }}>{offer.tradeCard!.playerName}</div>
+                          <div style={{ fontSize: '11px', color: '#8e8e8e' }}>{offer.tradeCard!.cardSet}</div>
+                          <RarityTag rarity={offer.tradeCard!.rarity} />
+                        </div>
+                        <span style={{ fontFamily: BC, fontSize: '20px', fontWeight: 800, color: '#555' }}>${offer.tradeCard!.value.toFixed(2)}</span>
+                      </div>
+                      {offer.cashSide && offer.amount && (
+                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #efefef', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '12px', color: '#8e8e8e' }}>{offer.cashSide === 'buyer' ? `@${offer.user} adds cash` : 'You add cash'}</span>
+                          <span style={{ fontFamily: BC, fontSize: '17px', fontWeight: 800, color: offer.cashSide === 'buyer' ? '#16a34a' : '#ea580c' }}>{offer.cashSide === 'buyer' ? '+' : '−'}${offer.amount.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {status !== 'pending' && (
+                        <div style={{ marginTop: '12px', textAlign: 'center', fontSize: '13px', fontWeight: 700, color: status === 'accepted' ? '#16a34a' : status === 'expired' ? '#f59e0b' : '#8e8e8e' }}>
+                          {status === 'accepted' ? 'You accepted this offer' : status === 'expired' ? 'This offer expired' : 'You declined this offer'}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
+
+                {/* counter result bubble */}
+                {myCounter && (
+                  <div style={{ marginTop: '10px', padding: '12px 14px', background: myCounter.accepted ? '#f0fdf4' : '#fef2f2', border: `1px solid ${myCounter.accepted ? '#86efac' : '#fca5a5'}`, borderRadius: '14px' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 700, color: myCounter.accepted ? '#16a34a' : '#dc2626' }}>
+                      {myCounter.accepted ? `@${offer.user} accepted your counter!` : `@${offer.user} passed on your counter.`}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#666', marginTop: '3px' }}>
+                      {myCounter.accepted ? `Sold for $${myCounter.price.toFixed(2)}` : 'They stuck to their original offer price.'}
+                    </div>
+                  </div>
+                )}
+
+                {/* action buttons */}
+                {status === 'pending' && !myCounter && (
+                  counterMode ? (
+                    <div style={{ marginTop: '10px' }}>
+                      <div style={{ fontSize: '12px', color: '#8e8e8e', marginBottom: '6px', fontWeight: 600 }}>Your counter price</div>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', marginBottom: '8px' }}>
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', border: '1px solid #dbdbdb', borderRadius: '10px', padding: '8px 12px' }}>
+                          <span style={{ color: '#8e8e8e', fontFamily: BC, fontWeight: 700 }}>$</span>
+                          <input type="number" value={counterCash} min={(offer.amount ?? 0) + 1}
+                            onChange={e => setCounterCash(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                            style={{ flex: 1, border: 'none', outline: 'none', fontFamily: BC, fontSize: '17px', fontWeight: 800, color: '#000', marginLeft: '4px', width: '100%' }} />
+                        </div>
+                        <GradientButton compact disabled={counterCash <= (offer.amount ?? 0)} onClick={() => sendCounter(card, offer, counterCash)}>Send</GradientButton>
+                      </div>
+                      <button onClick={() => setCounterMode(false)} style={{ ...ghostBtn, marginTop: 0 }}>Cancel</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                      <GradientButton onClick={() => offer.type === 'trade' ? setTradeConfirm({ offer, card }) : acceptMoney(card, offer)} compact>Accept</GradientButton>
+                      {offer.type === 'money' && (
+                        <button onClick={() => { setCounterMode(true); setCounterCash(Math.round(card.actualEbayPrice * 0.92)) }} style={{ ...ghostBtn, marginTop: 0, flex: 1 }}>Counter</button>
+                      )}
+                      <button onClick={() => declineOffer(card, offer)} style={{ ...ghostBtn, marginTop: 0, flex: 1 }}>Decline</button>
+                    </div>
+                  )
+                )}
               </div>
-            </div>
-            {status === 'pending' && (
-              <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-                <GradientButton onClick={() => offer.type === 'trade' ? setTradeConfirm({ offer, card }) : acceptMoney(card, offer)} compact>Accept</GradientButton>
-                <button onClick={() => declineOffer(card, offer)} style={{ ...ghostBtn, marginTop: 0, flex: 1 }}>Decline</button>
-              </div>
-            )}
-          </div>
+            )
+          })()}
         </div>
 
         {/* fake composer */}
@@ -729,16 +814,16 @@ export default function InstagramApp() {
       {/* ── SCROLL CONTENT ── */}
       <div style={{ flex: 1, overflowY: 'auto', background: '#fff' }}>
         {tab === 'home' && <Feed posts={igPosts} liked={likedPosts} onLike={toggleLike} profile={igProfile} verified={verified}
-          postMenu={postMenu} setPostMenu={setPostMenu} onUnpost={unpost} onOpenOffers={(card: Card) => { const o = visibleOffers(card)[0]; if (o) { setActiveOffer({ offer: o, card }); setOverlay('thread') } else { setOverlay('inbox') } }}
+          postMenu={postMenu} setPostMenu={setPostMenu} onUnpost={unpost} onOpenOffers={(card: Card) => { const o = visibleOffers(card)[0]; if (o) { setActiveOffer({ offer: o, card }); setCounterMode(false); setCounterResult(null); setOverlay('thread') } else { setOverlay('inbox') } }}
           visibleOffersCount={(c: Card) => visibleOffers(c).length} onPost={() => setOverlay('post')} />}
 
         {tab === 'search' && <Explore search={search} deals={deals} followers={followers} tierLabel={tier.label}
           onBargain={(d: Deal) => openBargain(d)} onRefresh={() => { setBoughtDeals(new Set()); setDealSeed(s => s + 1) }} />}
 
-        {tab === 'activity' && <Activity conversations={allConversations} onOpen={(offer: IgOffer, card: Card) => { setActiveOffer({ offer, card }); setOverlay('thread') }} />}
+        {tab === 'activity' && <Activity conversations={allConversations} onOpen={(offer: IgOffer, card: Card) => { setActiveOffer({ offer, card }); setCounterMode(false); setCounterResult(null); setOverlay('thread') }} />}
 
         {tab === 'profile' && <Profile profile={igProfile} verified={verified} posts={igPosts} sold={igSold} totalPosts={totalPosts} followers={followers}
-          onEdit={() => setOverlay('edit')} onPost={() => setOverlay('post')} onOpenPost={(card: Card) => { const o = visibleOffers(card)[0]; if (o) { setActiveOffer({ offer: o, card }); setOverlay('thread') } }} />}
+          onEdit={() => setOverlay('edit')} onPost={() => setOverlay('post')} onOpenPost={(card: Card) => { const o = visibleOffers(card)[0]; if (o) { setActiveOffer({ offer: o, card }); setCounterMode(false); setCounterResult(null); setOverlay('thread') } }} />}
       </div>
 
       {/* ── BOTTOM NAV ── */}
