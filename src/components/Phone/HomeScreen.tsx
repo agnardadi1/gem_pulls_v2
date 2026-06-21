@@ -172,27 +172,33 @@ export default function HomeScreen() {
         ))}
       </div>
 
-      {/* ── DEV buttons ── */}
-      <div className="flex justify-center gap-3 pb-2">
-        <button
-          onClick={() => useNotificationStore.getState().push('ebay', 'Your listing sold!', 'Zion Williamson RC sold for $84.00')}
-          className="text-white/20 text-[11px] border border-white/10 rounded-full px-3 py-1 cursor-pointer"
-        >
-          test notif
-        </button>
-        <button
-          onClick={() => { if (window.confirm('Reset to $500?')) resetRun() }}
-          className="text-white/20 text-[11px] border border-white/10 rounded-full px-3 py-1 cursor-pointer"
-        >
-          reset $500
-        </button>
-      </div>
-
-      {/* ── App icons ── sit in the lower third */}
-      <div className="flex justify-around items-end px-6" style={{ paddingBottom: '80px' }}>
-        {APPS.map(app => (
-          <AppIcon key={app.id} app={app} level={level} onTap={() => openApp(app.id)} />
-        ))}
+      {/* ── App icons + dev buttons ── */}
+      <div className="flex flex-col items-center" style={{ paddingBottom: '28px', gap: '14px' }}>
+        <div className="flex justify-around w-full px-6">
+          {APPS.map(app => (
+            <AppIcon key={app.id} app={app} level={level} onTap={() => openApp(app.id)} />
+          ))}
+        </div>
+        <div className="flex justify-center gap-3">
+          <button
+            onClick={() => useNotificationStore.getState().push('ebay', 'Your listing sold!', 'Zion Williamson RC sold for $84.00')}
+            className="text-white/20 text-[11px] border border-white/10 rounded-full px-3 py-1 cursor-pointer"
+          >
+            test notif
+          </button>
+          <button
+            onClick={() => { if (window.confirm('Reset to $500?')) resetRun() }}
+            className="text-white/20 text-[11px] border border-white/10 rounded-full px-3 py-1 cursor-pointer"
+          >
+            reset $500
+          </button>
+          <button
+            onClick={() => useGameStore.setState({ level: 4, bankroll: 99999 })}
+            className="text-white/20 text-[11px] border border-white/10 rounded-full px-3 py-1 cursor-pointer"
+          >
+            admin
+          </button>
+        </div>
       </div>
     </div>
   )
