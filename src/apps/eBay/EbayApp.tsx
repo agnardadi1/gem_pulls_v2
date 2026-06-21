@@ -73,7 +73,7 @@ export default function EbayApp() {
 
   function checkAndResolve() {
     const now = Date.now()
-    collection.filter(c => c.listed && !c.sold && (c.auctionEndTime || 0) <= now).forEach(resolveCard)
+    collection.filter(c => c.platform === 'ebay' && c.listed && !c.sold && (c.auctionEndTime || 0) <= now).forEach(resolveCard)
   }
 
   // ── Listing flow helpers ──
