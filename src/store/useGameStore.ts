@@ -2,6 +2,13 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Card, EbayRep, Stats } from '../types'
 
+export interface IgProfile {
+  handle: string
+  name: string
+  bio: string
+  avatar: string // hex color OR data URL
+}
+
 interface GameState {
   bankroll: number
   collection: Card[]
@@ -9,6 +16,7 @@ interface GameState {
   stats: Stats
   level: number
   wallpaper: string | null
+  igProfile: IgProfile
 
   // Actions
   setBankroll: (amount: number) => void
@@ -18,7 +26,15 @@ interface GameState {
   spendBankroll: (amount: number) => void
   resetRun: () => void
   setWallpaper: (dataUrl: string | null) => void
+  setIgProfile: (updates: Partial<IgProfile>) => void
 }
+
+const defaultIgProfile = (): IgProfile => ({
+  handle: 'gem.pulls',
+  name: 'Gem Pulls',
+  bio: 'Breaking wax & flipping grails daily.\nDM for deals — trades always open.',
+  avatar: '#7b2ff7',
+})
 
 const defaultStats = (): Stats => ({
   packs: 0,
@@ -41,8 +57,11 @@ export const useGameStore = create<GameState>()(
       stats: defaultStats(),
       level: 1,
       wallpaper: null,
+      igProfile: defaultIgProfile(),
 
       setBankroll: (amount) => set({ bankroll: amount }),
+
+      setIgProfile: (updates) => set((s) => ({ igProfile: { ...s.igProfile, ...updates } })),
 
       addCard: (card) =>
         set((s) => ({
