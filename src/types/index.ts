@@ -14,6 +14,10 @@ export interface Card {
   sellPrice: number | null
   platform?: 'ebay' | 'instagram' | 'whatnot'
   dmUsed?: boolean
+  // Instagram fields
+  igPostedAt?: number
+  igOffers?: IgOffer[]
+  igCleared?: boolean
   // eBay fields
   ebayFormat?: 'auction' | 'bin'
   ebayPrice?: number
@@ -33,6 +37,26 @@ export interface BidEvent {
   user: string
   amount: number
   type: 'bid' | 'sale'
+}
+
+export interface IgOffer {
+  id: string
+  user: string
+  avatar: string        // color hex
+  type: 'money' | 'trade'
+  amount?: number       // money offer OR cash sweetener amount
+  cashSide?: 'buyer' | 'seller' // who pays the sweetener
+  tradeCard?: {         // the card they're offering in trade
+    playerName: string
+    cardSet: string
+    rarity: string
+    value: number
+    imageUrl: string
+  }
+  message: string
+  arrivedAt: number
+  expiresAt: number
+  status: 'pending' | 'accepted' | 'declined' | 'expired'
 }
 
 export interface EbayRep {

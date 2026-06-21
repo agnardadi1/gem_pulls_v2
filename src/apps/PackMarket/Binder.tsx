@@ -4,7 +4,7 @@ import type { Rarity } from './packData'
 
 export default function Binder() {
   const { collection } = useGameStore()
-  const cards = [...collection].filter(c => !c.sold).reverse()
+  const cards = [...collection].filter(c => !c.sold && !(c.platform === 'ebay' && c.listed)).reverse()
 
   if (cards.length === 0) {
     return (
@@ -96,6 +96,9 @@ export default function Binder() {
                   </span>
                   {card.sold && (
                     <span style={{ marginLeft: 'auto', fontSize: '9px', color: '#4ade80', fontWeight: 700 }}>SOLD</span>
+                  )}
+                  {!card.sold && card.platform === 'instagram' && card.listed && (
+                    <span style={{ marginLeft: 'auto', fontSize: '9px', color: '#ee2a7b', fontWeight: 700 }}>ON INSTA</span>
                   )}
                 </div>
 
