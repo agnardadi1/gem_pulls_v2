@@ -60,8 +60,8 @@ export default function InstagramApp() {
     return () => clearInterval(id)
   }, [])
 
-  const posted = collection.filter(c => c.platform === 'instagram' && c.listed && !c.sold)
-  const available = collection.filter(c => !c.sold && !c.listed)
+  const posted = collection.filter(c => !!c.igPostedAt && c.listed && !c.sold)
+  const available = collection.filter(c => !c.sold && !c.listed && !c.igPostedAt)
 
   function postCard(card: Card) {
     const postedAt = Date.now()
