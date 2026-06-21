@@ -87,8 +87,8 @@ export function genIgOffers(card: Card, postedAt: number): IgOffer[] {
     const expiresAt = arrivedAt + randInt(10, 20) * 60 * 1000 // 10–20 min to respond
 
     const isTrade = (persona.style === 'trader' || persona.style === 'grail')
-      ? Math.random() < 0.65
-      : Math.random() < 0.25
+      ? Math.random() < 0.78
+      : Math.random() < 0.42
 
     if (isTrade) {
       // Only trade cards whose value is within 50%–160% of market — no fallback to random
@@ -157,4 +157,59 @@ export function genIgOffers(card: Card, postedAt: number): IgOffer[] {
   }
 
   return offers.sort((a, b) => a.arrivedAt - b.arrivedAt)
+}
+
+// ─── Buy-side bargaining ───
+// You offer cash and/or one of your cards. The seller's willingness to come
+// down off their asking price scales with your following (rep). Low rep =
+// they hold near asking and reject lowballs; high rep = they deal.
+
+const ACCEPT_MSGS = [
+  "Deal — pleasure doing business 🤝", "Sold! I'll get it shipped.",
+  "Yeah I can do that. It's yours.", "Works for me, let's lock it in.",
+  "Alright, you've got yourself a card.",
+]
+const WALK_MSGS = [
+  "We're too far apart. I'll keep it listed.", "Nah, I've got other buyers. Good luck.",
+  "Gonna pass — appreciate the interest though.",
+]
+
+export interface SellerResponse {
+  action: 'accept' | 'counter' | 'decline' | 'walk'
+  counter?: number
+  message: string
+}
+
+export function sellerRespond(opts: {
+  asking: number; offerValue: number; followers: number; round: number
+}): SellerResponse {
+  const { asking, offerValue, followers, round } = opts
+  // Rep discount: 0 followers → seller floor 92% of asking; 5k+ → 70%
+  const rep = Math.min(followers / 5000, 1)
+  const floor = asking * (0.92 - rep * 0.22)
+  const ratio = offerValue / floor
+
+  // Patience runs out after 3 rounds of haggling
+  if (round > 3) {
+    if (offerValue >= floor) return { action: 'accept', message: pick(ACCEPT_MSGS) }
+    return { action: 'walk', message: pick(WALK_MSGS) }
+  }
+
+  if (offerValue >= floor) return { action: 'accept', message: pick(ACCEPT_MSGS) }
+
+  // How much lowballing they tolerate before flat-out declining.
+  // Low rep = intolerant (declines more), high rep = patient (counters).
+  const declineRatio = followers < 100 ? 0.90 : followers < 500 ? 0.78 : followers < 1500 ? 0.68 : 0.58
+  if (ratio < declineRatio) {
+    const message = followers < 100
+      ? "That's way too low — you're new around here, I need to see close to asking."
+      : followers < 500
+        ? "Too low for me, sorry. Come up a good bit."
+        : "Can't do that one, but I'm listening if you're serious."
+    return { action: 'decline', message }
+  }
+
+  // Counter somewhere between their floor and the asking price
+  const counter = Math.round(Math.min(asking, (offerValue + floor) / 2 + asking * 0.04) * 100) / 100
+  return { action: 'counter', counter, message: `Can't quite do that. I'll let it go for $${counter.toFixed(2)}.` }
 }

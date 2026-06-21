@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { usePhoneStore } from '../../store/usePhoneStore'
 import { useGameStore } from '../../store/useGameStore'
 import { useNotificationStore } from '../../store/useNotificationStore'
-import { genIgOffers } from './igLogic'
+import { genIgOffers, sellerRespond } from './igLogic'
 import { RARITY_META, CARDS } from '../PackMarket/packData'
 import type { Card, IgOffer } from '../../types'
 import type { Rarity } from '../PackMarket/packData'
@@ -37,13 +37,13 @@ const COMMENTERS = [
 ]
 const SELLERS = ['vintage_vault', 'slab_society', 'breakroom_bob', 'gem_mint_gary', 'the_card_plug', 'pristine_pulls', 'hobby_hank', 'wax_and_wane']
 
-// ─── Explore deals: more & better deals as your following grows ───
+// ─── Explore deals: more cards in reach (and better haggling) as you grow ───
 function dealTier(followers: number) {
-  if (followers >= 2500) return { count: 16, minDisc: 0.18, maxDisc: 0.46, maxVal: Infinity, label: 'Insider deals' }
-  if (followers >= 800)  return { count: 11, minDisc: 0.12, maxDisc: 0.34, maxVal: Infinity, label: 'Trusted buyer' }
-  if (followers >= 250)  return { count: 7,  minDisc: 0.08, maxDisc: 0.24, maxVal: 800,      label: 'Growing reach' }
-  if (followers >= 60)   return { count: 5,  minDisc: 0.05, maxDisc: 0.16, maxVal: 350,      label: 'Getting noticed' }
-  return                        { count: 3,  minDisc: 0.03, maxDisc: 0.11, maxVal: 200,      label: 'New on the scene' }
+  if (followers >= 2500) return { count: 16, maxVal: Infinity, label: 'Insider access' }
+  if (followers >= 800)  return { count: 11, maxVal: Infinity, label: 'Trusted buyer' }
+  if (followers >= 250)  return { count: 7,  maxVal: 800,      label: 'Growing reach' }
+  if (followers >= 60)   return { count: 5,  maxVal: 350,      label: 'Getting noticed' }
+  return                        { count: 3,  maxVal: 200,      label: 'New on the scene' }
 }
 
 const BUY_RARITY: Record<string, Card['rarity']> = { common: 'common', uncommon: 'uncommon', rare: 'rare', chase: 'legendary' }
@@ -55,27 +55,41 @@ export interface Deal {
   cardSet: string
   variant: string
   rarity: string
-  market: number
-  price: number
-  discountPct: number
+  market: number   // also the seller's asking price — you bargain down from here
   seller: string
+  sellerAvatar: string
   imageUrl: string
+}
+
+const SELLER_COLORS = ['#E53238', '#3665F3', '#a855f7', '#F5AF02', '#00AC4E', '#FB923C', '#06b6d4', '#ec4899']
+
+interface BargainMsg {
+  from: 'seller' | 'you'
+  text: string
+  cash?: number
+  cardName?: string
+  cardValue?: number
+}
+interface BargainSession {
+  deal: Deal
+  messages: BargainMsg[]
+  round: number
+  status: 'open' | 'accepted' | 'walked'
+  counterPrice?: number   // seller's standing counter you can accept (cash only)
 }
 
 function genDeals(followers: number, seedNum: number): Deal[] {
   const tier = dealTier(followers)
   const rng = makeRng('deals-' + seedNum + '-' + tier.count)
   const pool = CARDS.filter(c => c.actualEbayPrice <= tier.maxVal)
-  // Fisher-Yates with seeded rng
   const arr = [...pool]
   for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]] }
   return arr.slice(0, Math.min(tier.count, arr.length)).map((c, i) => {
-    const disc = tier.minDisc + rng() * (tier.maxDisc - tier.minDisc)
-    const price = Math.max(1, Math.round(c.actualEbayPrice * (1 - disc) * 100) / 100)
+    const si = Math.floor(rng() * SELLERS.length)
     return {
       id: `${seedNum}-${c.id}-${i}`, cardId: c.id, playerName: c.playerName, cardSet: c.cardSet,
-      variant: c.variant, rarity: c.rarity, market: c.actualEbayPrice, price,
-      discountPct: Math.round(disc * 100), seller: SELLERS[Math.floor(rng() * SELLERS.length)], imageUrl: c.imageUrl,
+      variant: c.variant, rarity: c.rarity, market: c.actualEbayPrice,
+      seller: SELLERS[si], sellerAvatar: SELLER_COLORS[si % SELLER_COLORS.length], imageUrl: c.imageUrl,
     }
   })
 }
@@ -138,14 +152,17 @@ function RarityTag({ rarity }: { rarity: string }) {
 
 export default function InstagramApp() {
   const { closeApp } = usePhoneStore()
-  const { collection, updateCard, addEarnings, spendBankroll, addCard, bankroll, setBankroll, stats, igProfile, setIgProfile } = useGameStore()
+  const { collection, updateCard, addEarnings, spendBankroll, addCard, removeCard, bankroll, setBankroll, stats, igProfile, setIgProfile } = useGameStore()
   const pushNotif = useNotificationStore(s => s.push)
 
   const [tab, setTab] = useState<Tab>('home')
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [activeOffer, setActiveOffer] = useState<{ offer: IgOffer; card: Card } | null>(null)
   const [tradeConfirm, setTradeConfirm] = useState<{ offer: IgOffer; card: Card } | null>(null)
-  const [buyDeal, setBuyDeal] = useState<Deal | null>(null)
+  const [bargain, setBargain] = useState<BargainSession | null>(null)
+  const [offerCash, setOfferCash] = useState(0)
+  const [offerCardCid, setOfferCardCid] = useState<string | null>(null)
+  const [cardPicker, setCardPicker] = useState(false)
   const [boughtDeals, setBoughtDeals] = useState<Set<string>>(new Set())
   const [dealSeed, setDealSeed] = useState(() => Math.floor(Date.now() / 60000))
   const [menuOpen, setMenuOpen] = useState(false)
@@ -194,9 +211,20 @@ export default function InstagramApp() {
     [dealSeed, tier.count, boughtDeals]
   )
 
-  function doBuy(deal: Deal) {
-    if (bankroll < deal.price) return
-    setBankroll(bankroll - deal.price)
+  function openBargain(deal: Deal) {
+    setBargain({
+      deal, round: 0, status: 'open',
+      messages: [{ from: 'seller', text: `Asking $${deal.market.toFixed(2)} for the ${deal.playerName}. Open to offers — cash, cards, or both.` }],
+    })
+    setOfferCash(Math.round(deal.market * 0.85))
+    setOfferCardCid(null)
+    setCardPicker(false)
+  }
+
+  function finalizeBuy(deal: Deal, cash: number, tradeCid: string | null) {
+    if (bankroll < cash) return false
+    setBankroll(bankroll - cash)
+    if (tradeCid) removeCard(tradeCid)
     addCard({
       cid: `buy-${Date.now()}`,
       playerName: deal.playerName, cardSet: deal.cardSet, variant: deal.variant,
@@ -205,8 +233,51 @@ export default function InstagramApp() {
       pulledAt: Date.now(), sold: false, listed: false, sellPrice: null,
     })
     setBoughtDeals(s => new Set(s).add(deal.id))
-    pushNotif('instagram', 'Purchase complete', `You bought ${deal.playerName} for $${deal.price.toFixed(2)}`)
-    setBuyDeal(null)
+    pushNotif('instagram', 'Purchase complete', `You bought ${deal.playerName} for $${cash.toFixed(2)}${tradeCid ? ' + a card' : ''}`)
+    return true
+  }
+
+  function sendOffer() {
+    if (!bargain || bargain.status !== 'open') return
+    const tradeCard = offerCardCid ? collection.find(c => c.cid === offerCardCid) : null
+    const cardValue = tradeCard ? tradeCard.actualEbayPrice : 0
+    const offerValue = offerCash + cardValue
+    if (offerValue <= 0 || offerCash > bankroll) return
+
+    const round = bargain.round + 1
+    const youMsg: BargainMsg = {
+      from: 'you',
+      text: tradeCard ? `$${offerCash.toFixed(2)} + my ${tradeCard.playerName}` : `$${offerCash.toFixed(2)}`,
+      cash: offerCash, cardName: tradeCard?.playerName, cardValue,
+    }
+    const resp = sellerRespond({ asking: bargain.deal.market, offerValue, followers, round })
+    const sellerMsg: BargainMsg = { from: 'seller', text: resp.message }
+
+    if (resp.action === 'accept') {
+      const ok = finalizeBuy(bargain.deal, offerCash, offerCardCid)
+      if (!ok) { // safety: can't afford the cash they accepted
+        setBargain({ ...bargain, round, messages: [...bargain.messages, youMsg, { from: 'seller', text: "Looks like your cash didn't clear — come back when you've got it." }] })
+        return
+      }
+      setBargain({ ...bargain, round, status: 'accepted', messages: [...bargain.messages, youMsg, sellerMsg] })
+    } else if (resp.action === 'counter') {
+      setBargain({ ...bargain, round, counterPrice: resp.counter, messages: [...bargain.messages, youMsg, sellerMsg] })
+    } else if (resp.action === 'walk') {
+      setBargain({ ...bargain, round, status: 'walked', messages: [...bargain.messages, youMsg, sellerMsg] })
+    } else {
+      setBargain({ ...bargain, round, counterPrice: undefined, messages: [...bargain.messages, youMsg, sellerMsg] })
+    }
+  }
+
+  function acceptCounter() {
+    if (!bargain || bargain.counterPrice == null) return
+    const price = bargain.counterPrice
+    const ok = finalizeBuy(bargain.deal, price, null)
+    if (!ok) {
+      setBargain({ ...bargain, messages: [...bargain.messages, { from: 'seller', text: "You don't have the cash for that right now." }] })
+      return
+    }
+    setBargain({ ...bargain, status: 'accepted', messages: [...bargain.messages, { from: 'you', text: `Accepted your counter — $${price.toFixed(2)}.` }, { from: 'seller', text: 'Perfect, sending it your way 📦' }] })
   }
 
   // ── actions ──
@@ -308,34 +379,139 @@ export default function InstagramApp() {
     )
   }
 
-  // ── BUY DEAL CONFIRM ──
-  if (buyDeal) {
-    const canAfford = bankroll >= buyDeal.price
-    const meta = RARITY_META[(BUY_RARITY[buyDeal.rarity] as Rarity)] ?? RARITY_META.common
+  // ── BARGAIN: pick a card to add to your offer ──
+  if (bargain && cardPicker) {
     return (
-      <Sheet title="Buy card" onBack={() => setBuyDeal(null)}>
-        <div style={{ padding: '20px 16px' }}>
-          <div style={{ background: '#fff', border: '1px solid #efefef', borderRadius: '16px', overflow: 'hidden', marginBottom: '18px' }}>
-            <div style={{ position: 'relative', height: '220px', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {buyDeal.imageUrl ? <img src={buyDeal.imageUrl} alt={buyDeal.playerName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <div style={{ width: '100%', height: '100%', background: meta.color }} />}
-              <div style={{ position: 'absolute', top: '12px', left: '12px', background: '#16a34a', color: '#fff', borderRadius: '8px', padding: '4px 10px', fontFamily: BC, fontSize: '15px', fontWeight: 800 }}>−{buyDeal.discountPct}%</div>
+      <Sheet title="Add a card to your offer" onBack={() => setCardPicker(false)}>
+        <div style={{ padding: '12px 14px' }}>
+          {available.length === 0 ? (
+            <Empty title="No cards to trade" sub="You need spare cards in your collection to add to an offer." />
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {available.map(card => {
+                const meta = RARITY_META[(card.rarity as Rarity)] ?? RARITY_META.common
+                return (
+                  <button key={card.cid} onClick={() => { setOfferCardCid(card.cid); setCardPicker(false) }} style={{ textAlign: 'left', background: '#fff', border: '1px solid #efefef', borderRadius: '14px', overflow: 'hidden', cursor: 'pointer', padding: 0 }}>
+                    <div style={{ position: 'relative', height: '120px', background: '#f3f4f6' }}>
+                      {card.imageUrl ? <img src={card.imageUrl} alt={card.playerName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <div style={{ width: '100%', height: '100%', background: meta.color }} />}
+                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: meta.textColor }} />
+                    </div>
+                    <div style={{ padding: '8px 10px 10px' }}>
+                      <div style={{ fontFamily: BC, fontSize: '14px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.playerName}</div>
+                      <div style={{ fontFamily: BC, fontSize: '14px', fontWeight: 800, color: '#16a34a' }}>${card.actualEbayPrice.toFixed(2)}</div>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
-            <div style={{ padding: '14px' }}>
-              <div style={{ fontFamily: BC, fontSize: '20px', fontWeight: 800 }}>{buyDeal.playerName}</div>
-              <div style={{ fontSize: '12px', color: '#8e8e8e', marginBottom: '6px' }}>{buyDeal.cardSet} · {buyDeal.variant}</div>
-              <RarityTag rarity={BUY_RARITY[buyDeal.rarity]} />
-              <div style={{ fontSize: '12px', color: '#8e8e8e', marginTop: '8px' }}>Listed by @{buyDeal.seller}</div>
-            </div>
-          </div>
-          <Row label="Market value" value={`$${buyDeal.market.toFixed(2)}`} muted strike />
-          <Row label="Deal price" value={`$${buyDeal.price.toFixed(2)}`} big />
-          <Row label="You save" value={`$${(buyDeal.market - buyDeal.price).toFixed(2)}`} green />
-          <div style={{ height: '12px' }} />
-          {!canAfford && <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '12px', padding: '12px 14px', marginBottom: '12px', fontSize: '13px', color: '#dc2626' }}>Not enough bankroll. You have ${bankroll.toFixed(2)}.</div>}
-          <GradientButton disabled={!canAfford} onClick={() => doBuy(buyDeal)}>Buy for ${buyDeal.price.toFixed(2)}</GradientButton>
-          <button onClick={() => setBuyDeal(null)} style={ghostBtn}>Cancel</button>
+          )}
         </div>
       </Sheet>
+    )
+  }
+
+  // ── BARGAIN: negotiation thread ──
+  if (bargain) {
+    const { deal, messages, status, counterPrice } = bargain
+    const tradeCard = offerCardCid ? collection.find(c => c.cid === offerCardCid) : null
+    const offerValue = offerCash + (tradeCard?.actualEbayPrice || 0)
+    const tooMuchCash = offerCash > bankroll
+    const canSend = status === 'open' && offerValue > 0 && !tooMuchCash
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
+        <TopBar>
+          <button onClick={() => setBargain(null)} style={iconBtn}>{I.back()}</button>
+          <Avatar color={deal.sellerAvatar} label={deal.seller} size={34} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '15px', fontWeight: 700 }}>{deal.seller}</div>
+            <div style={{ fontSize: '11px', color: '#8e8e8e' }}>Seller · usually replies instantly</div>
+          </div>
+        </TopBar>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {/* listing card */}
+          <div style={{ alignSelf: 'flex-start', maxWidth: '80%', border: '1px solid #efefef', borderRadius: '16px', overflow: 'hidden', background: '#fafafa' }}>
+            <div style={{ height: '140px', background: '#f3f4f6' }}>
+              {deal.imageUrl && <img src={deal.imageUrl} alt={deal.playerName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+            </div>
+            <div style={{ padding: '8px 12px' }}>
+              <div style={{ fontFamily: BC, fontWeight: 700, fontSize: '15px' }}>{deal.playerName}</div>
+              <div style={{ fontSize: '11px', color: '#8e8e8e' }}>{deal.cardSet}</div>
+              <div style={{ fontFamily: BC, fontSize: '16px', fontWeight: 800, color: '#16a34a', marginTop: '2px' }}>Asking ${deal.market.toFixed(2)}</div>
+            </div>
+          </div>
+
+          {messages.map((m, i) => (
+            <div key={i} style={{ alignSelf: m.from === 'you' ? 'flex-end' : 'flex-start', maxWidth: '78%', background: m.from === 'you' ? '#3897f0' : '#efefef', color: m.from === 'you' ? '#fff' : '#000', borderRadius: m.from === 'you' ? '18px 18px 4px 18px' : '18px 18px 18px 4px', padding: '10px 14px', fontSize: '14px', lineHeight: 1.35 }}>
+              {m.text}
+            </div>
+          ))}
+
+          {status === 'accepted' && (
+            <div style={{ alignSelf: 'center', textAlign: 'center', margin: '8px 0', padding: '14px 18px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '14px', width: '100%' }}>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: '#16a34a' }}>Deal closed!</div>
+              <div style={{ fontSize: '13px', color: '#15803d', marginTop: '2px' }}>{deal.playerName} is now in your binder.</div>
+            </div>
+          )}
+          {status === 'walked' && (
+            <div style={{ alignSelf: 'center', textAlign: 'center', margin: '8px 0', padding: '14px 18px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '14px', width: '100%' }}>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: '#dc2626' }}>Seller walked away</div>
+              <div style={{ fontSize: '13px', color: '#b91c1c', marginTop: '2px' }}>Build your reputation with sales and they'll deal more.</div>
+            </div>
+          )}
+        </div>
+
+        {/* composer / result actions */}
+        {status === 'open' ? (
+          <div style={{ borderTop: '1px solid #efefef', padding: '10px 14px 14px' }}>
+            {counterPrice != null && (
+              <button onClick={acceptCounter} disabled={bankroll < counterPrice} style={{ width: '100%', marginBottom: '10px', padding: '11px', borderRadius: '10px', border: 'none', background: bankroll < counterPrice ? '#efefef' : '#16a34a', color: bankroll < counterPrice ? '#aaa' : '#fff', fontSize: '14px', fontWeight: 700, fontFamily: BC, cursor: bankroll < counterPrice ? 'default' : 'pointer' }}>
+                Accept their ${counterPrice.toFixed(2)}
+              </button>
+            )}
+            {/* cash row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <span style={{ fontSize: '13px', color: '#8e8e8e', width: '60px' }}>Your cash</span>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', border: `1px solid ${tooMuchCash ? '#fca5a5' : '#dbdbdb'}`, borderRadius: '10px', padding: '8px 12px' }}>
+                <span style={{ color: '#8e8e8e', fontFamily: BC, fontWeight: 700 }}>$</span>
+                <input type="number" value={offerCash} min={0} onChange={e => setOfferCash(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                  style={{ flex: 1, border: 'none', outline: 'none', fontFamily: BC, fontSize: '17px', fontWeight: 800, color: '#000', marginLeft: '4px', width: '100%' }} />
+              </div>
+            </div>
+            {/* card chip */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <span style={{ fontSize: '13px', color: '#8e8e8e', width: '60px' }}>Your card</span>
+              {tradeCard ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #dbdbdb', borderRadius: '10px', padding: '6px 10px' }}>
+                  <div style={{ width: '26px', height: '34px', borderRadius: '4px', overflow: 'hidden', background: '#f3f4f6', flexShrink: 0 }}>
+                    {tradeCard.imageUrl && <img src={tradeCard.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tradeCard.playerName}</div>
+                    <div style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700 }}>${tradeCard.actualEbayPrice.toFixed(2)} value</div>
+                  </div>
+                  <button onClick={() => setOfferCardCid(null)} style={{ background: 'none', border: 'none', color: '#8e8e8e', fontSize: '18px', cursor: 'pointer', padding: '0 4px' }}>×</button>
+                </div>
+              ) : (
+                <button onClick={() => setCardPicker(true)} style={{ flex: 1, textAlign: 'left', border: '1px dashed #cbcbcb', borderRadius: '10px', padding: '10px 12px', background: '#fafafa', color: '#3897f0', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}>
+                  + Add a card to sweeten the offer
+                </button>
+              )}
+            </div>
+            {/* total + send */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span style={{ fontSize: '12px', color: '#8e8e8e' }}>Offer value</span>
+              <span style={{ fontFamily: BC, fontSize: '18px', fontWeight: 800, color: '#000' }}>${offerValue.toFixed(2)}</span>
+            </div>
+            {tooMuchCash && <div style={{ fontSize: '12px', color: '#dc2626', marginBottom: '8px' }}>You only have ${bankroll.toFixed(2)} in cash.</div>}
+            <GradientButton disabled={!canSend} onClick={sendOffer}>{bargain.round === 0 ? 'Send offer' : 'Send new offer'}</GradientButton>
+          </div>
+        ) : (
+          <div style={{ borderTop: '1px solid #efefef', padding: '12px 14px' }}>
+            <button onClick={() => setBargain(null)} style={{ ...ghostBtn, marginTop: 0 }}>Done</button>
+          </div>
+        )}
+      </div>
     )
   }
 
@@ -556,8 +732,8 @@ export default function InstagramApp() {
           postMenu={postMenu} setPostMenu={setPostMenu} onUnpost={unpost} onOpenOffers={(card: Card) => { const o = visibleOffers(card)[0]; if (o) { setActiveOffer({ offer: o, card }); setOverlay('thread') } else { setOverlay('inbox') } }}
           visibleOffersCount={(c: Card) => visibleOffers(c).length} onPost={() => setOverlay('post')} />}
 
-        {tab === 'search' && <Explore search={search} deals={deals} followers={followers} tierLabel={tier.label} bankroll={bankroll}
-          onBuy={(d: Deal) => setBuyDeal(d)} onRefresh={() => { setBoughtDeals(new Set()); setDealSeed(s => s + 1) }} />}
+        {tab === 'search' && <Explore search={search} deals={deals} followers={followers} tierLabel={tier.label}
+          onBargain={(d: Deal) => openBargain(d)} onRefresh={() => { setBoughtDeals(new Set()); setDealSeed(s => s + 1) }} />}
 
         {tab === 'activity' && <Activity conversations={allConversations} onOpen={(offer: IgOffer, card: Card) => { setActiveOffer({ offer, card }); setOverlay('thread') }} />}
 
@@ -694,9 +870,9 @@ function Feed({ posts, liked, onLike, profile, verified, postMenu, setPostMenu, 
   )
 }
 
-function Explore({ search, deals, followers, tierLabel, bankroll, onBuy, onRefresh }: {
-  search: string; deals: Deal[]; followers: number; tierLabel: string; bankroll: number
-  onBuy: (d: Deal) => void; onRefresh: () => void
+function Explore({ search, deals, followers, tierLabel, onBargain, onRefresh }: {
+  search: string; deals: Deal[]; followers: number; tierLabel: string
+  onBargain: (d: Deal) => void; onRefresh: () => void
 }) {
   const filtered = search.trim()
     ? deals.filter(d => (d.playerName + ' ' + d.cardSet + ' ' + d.seller).toLowerCase().includes(search.toLowerCase()))
@@ -712,7 +888,7 @@ function Explore({ search, deals, followers, tierLabel, bankroll, onBuy, onRefre
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#d62976' }} />{tierLabel}
           </div>
           <div style={{ fontSize: '12px', color: '#8e8e8e', marginTop: '2px' }}>
-            {nextTierAt ? `${(nextTierAt - followers).toLocaleString()} more followers unlocks more & better deals` : 'Top tier — best deals unlocked'}
+            {nextTierAt ? `${(nextTierAt - followers).toLocaleString()} more followers = more listings & better haggling` : 'Top tier — sellers deal their lowest with you'}
           </div>
         </div>
         <button onClick={onRefresh} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#efefef', border: 'none', borderRadius: '99px', padding: '7px 12px', fontSize: '12px', fontWeight: 700, color: '#262626', cursor: 'pointer' }}>
@@ -722,32 +898,30 @@ function Explore({ search, deals, followers, tierLabel, bankroll, onBuy, onRefre
       </div>
 
       {filtered.length === 0 ? (
-        <Empty title={search.trim() ? 'No deals match' : 'No deals right now'} sub={search.trim() ? 'Try another player or set.' : 'Pull to refresh or grow your following for more.'} />
+        <Empty title={search.trim() ? 'No listings match' : 'No listings right now'} sub={search.trim() ? 'Try another player or set.' : 'Refresh or grow your following for more.'} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', padding: '12px' }}>
           {filtered.map(d => {
             const meta = RARITY_META[(BUY_RARITY[d.rarity] as Rarity)] ?? RARITY_META.common
-            const affordable = bankroll >= d.price
             return (
               <div key={d.id} style={{ background: '#fff', border: '1px solid #efefef', borderRadius: '14px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ position: 'relative', height: '130px', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {d.imageUrl ? <img src={d.imageUrl} alt={d.playerName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <div style={{ width: '100%', height: '100%', background: meta.color }} />}
-                  <div style={{ position: 'absolute', top: '8px', left: '8px', background: '#16a34a', color: '#fff', borderRadius: '6px', padding: '2px 7px', fontFamily: BC, fontSize: '13px', fontWeight: 800 }}>−{d.discountPct}%</div>
                   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: meta.textColor }} />
                 </div>
                 <div style={{ padding: '8px 10px 10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <div style={{ fontFamily: BC, fontSize: '15px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.playerName}</div>
                   <div style={{ fontSize: '10px', color: '#8e8e8e', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>@{d.seller}</div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                    <span style={{ fontFamily: BC, fontSize: '18px', fontWeight: 800, color: '#16a34a' }}>${d.price.toFixed(2)}</span>
-                    <span style={{ fontSize: '11px', color: '#bbb', textDecoration: 'line-through' }}>${d.market.toFixed(0)}</span>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
+                    <span style={{ fontSize: '10px', color: '#8e8e8e' }}>asking</span>
+                    <span style={{ fontFamily: BC, fontSize: '18px', fontWeight: 800, color: '#000' }}>${d.market.toFixed(2)}</span>
                   </div>
-                  <button onClick={() => onBuy(d)} style={{
+                  <button onClick={() => onBargain(d)} style={{
                     marginTop: '8px', width: '100%', padding: '8px', borderRadius: '8px', border: 'none',
-                    background: affordable ? IG_GRADIENT : '#efefef', color: affordable ? '#fff' : '#aaa',
+                    background: IG_GRADIENT, color: '#fff',
                     fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: BC, letterSpacing: '0.3px',
                   }}>
-                    {affordable ? 'Buy' : 'Too pricey'}
+                    Make offer
                   </button>
                 </div>
               </div>
@@ -921,14 +1095,6 @@ function NavBtn({ onClick, children }: any) {
 }
 function Stat({ n, label }: { n: any; label: string }) {
   return <div><div style={{ fontSize: '18px', fontWeight: 700, lineHeight: 1.1 }}>{n}</div><div style={{ fontSize: '13px', color: '#262626' }}>{label}</div></div>
-}
-function Row({ label, value, muted, strike, big, green }: { label: string; value: string; muted?: boolean; strike?: boolean; big?: boolean; green?: boolean }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f3f3f3' }}>
-      <span style={{ fontSize: '14px', color: '#8e8e8e' }}>{label}</span>
-      <span style={{ fontFamily: BC, fontSize: big ? '22px' : '16px', fontWeight: 800, color: green ? '#16a34a' : muted ? '#999' : '#000', textDecoration: strike ? 'line-through' : 'none' }}>{value}</span>
-    </div>
-  )
 }
 function MenuItem({ label, onClick, danger }: any) {
   return <button onClick={onClick} style={{ width: '100%', textAlign: 'left', padding: '13px 16px', background: 'none', border: 'none', borderBottom: '1px solid #f3f3f3', fontSize: '14px', fontWeight: 600, color: danger ? '#ed4956' : '#000', cursor: 'pointer' }}>{label}</button>

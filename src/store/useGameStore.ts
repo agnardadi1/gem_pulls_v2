@@ -22,6 +22,7 @@ interface GameState {
   setBankroll: (amount: number) => void
   addCard: (card: Card) => void
   updateCard: (cid: string, updates: Partial<Card>) => void
+  removeCard: (cid: string) => void
   addEarnings: (amount: number) => void
   spendBankroll: (amount: number) => void
   resetRun: () => void
@@ -75,6 +76,9 @@ export const useGameStore = create<GameState>()(
             c.cid === cid ? { ...c, ...updates } : c
           ),
         })),
+
+      removeCard: (cid) =>
+        set((s) => ({ collection: s.collection.filter((c) => c.cid !== cid) })),
 
       addEarnings: (amount) =>
         set((s) => {
