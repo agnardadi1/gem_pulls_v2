@@ -71,8 +71,8 @@ export function genIgOffers(card: Card, postedAt: number): IgOffer[] {
   const offers: IgOffer[] = []
   const now = postedAt
 
-  // How many offers based on card value
-  const count = mkt >= 200 ? randInt(3, 5) : mkt >= 75 ? randInt(2, 4) : randInt(1, 3)
+  // How many offers based on card value — higher value = more attention
+  const count = mkt >= 500 ? randInt(5, 7) : mkt >= 200 ? randInt(4, 6) : mkt >= 75 ? randInt(2, 4) : mkt >= 25 ? randInt(1, 3) : randInt(1, 2)
   const usedPersonas = new Set<string>()
 
   for (let i = 0; i < count; i++) {
