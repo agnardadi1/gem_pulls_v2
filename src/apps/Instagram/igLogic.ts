@@ -84,76 +84,79 @@ export function genIgOffers(card: Card, postedAt: number): IgOffer[] {
     }
     usedPersonas.add(persona.user)
 
-    // Arrive staggered: 30s to 4min after posting (scaled to gameplay)
-    const arriveDelay = randInt(30, 240) * 1000
+    // Arrive staggered: 1–8 min after posting
+    const arriveDelay = randInt(60, 480) * 1000
     const arrivedAt = now + arriveDelay
-    const expiresAt = arrivedAt + randInt(3, 8) * 60 * 1000 // 3–8 min to respond
+    const expiresAt = arrivedAt + randInt(10, 20) * 60 * 1000 // 10–20 min to respond
 
     const isTrade = (persona.style === 'trader' || persona.style === 'grail')
       ? Math.random() < 0.65
       : Math.random() < 0.25
 
     if (isTrade) {
-      // Pick a trade card with value roughly in range
+      // Only trade cards whose value is within 50%–160% of market — no fallback to random
       const candidates = TRADE_CARDS.filter(tc =>
         tc.value >= mkt * 0.5 && tc.value <= mkt * 1.6
       )
-      const tradeCard = candidates.length > 0 ? pick(candidates) : pick(TRADE_CARDS)
+      if (candidates.length === 0) {
+        // No sensible trade card available — fall through to money offer below
+      } else {
+        const tradeCard = pick(candidates)
 
-      // Sweetener: difference drives who adds cash
-      const diff = mkt - tradeCard.value
-      let cashSide: 'buyer' | 'seller' | undefined
-      let amount: number | undefined
+        // Sweetener covers most of the gap: buyer pays 75–95%, seller pays 60–80%
+        const diff = mkt - tradeCard.value
+        let cashSide: 'buyer' | 'seller' | undefined
+        let amount: number | undefined
 
-      if (Math.abs(diff) > 10) {
-        if (diff > 0) {
-          // Their card is worth less → they add cash
-          cashSide = 'buyer'
-          amount = Math.round(Math.abs(diff) * (0.6 + Math.random() * 0.3))
-        } else {
-          // Their card is worth more → you add cash
-          cashSide = 'seller'
-          amount = Math.round(Math.abs(diff) * (0.5 + Math.random() * 0.3))
+        if (Math.abs(diff) > 10) {
+          if (diff > 0) {
+            cashSide = 'buyer'
+            amount = Math.round(Math.abs(diff) * (0.75 + Math.random() * 0.20))
+          } else {
+            cashSide = 'seller'
+            amount = Math.round(Math.abs(diff) * (0.60 + Math.random() * 0.20))
+          }
         }
-      }
 
-      offers.push({
-        id: `${card.cid}-${i}`,
-        user: persona.user,
-        avatar: persona.avatar,
-        type: 'trade',
-        tradeCard: { ...tradeCard, imageUrl: '' },
-        cashSide,
-        amount,
-        message: pick(MESSAGES[persona.style as keyof typeof MESSAGES]),
-        arrivedAt,
-        expiresAt,
-        status: 'pending',
-      })
-    } else {
-      // Money offer
-      const pctMap: Record<string, number> = {
-        lowball: 0.45 + Math.random() * 0.15,
-        fair: 0.75 + Math.random() * 0.15,
-        collector: 0.85 + Math.random() * 0.15,
-        grail: 1.0 + Math.random() * 0.25,
-        trader: 0.7 + Math.random() * 0.15,
+        offers.push({
+          id: `${card.cid}-${i}`,
+          user: persona.user,
+          avatar: persona.avatar,
+          type: 'trade',
+          tradeCard: { ...tradeCard, imageUrl: '' },
+          cashSide,
+          amount,
+          message: pick(MESSAGES[persona.style as keyof typeof MESSAGES]),
+          arrivedAt,
+          expiresAt,
+          status: 'pending',
+        })
+        continue
       }
-      const pct = pctMap[persona.style] ?? 0.75
-      const amount = Math.round(mkt * pct * 100) / 100
-
-      offers.push({
-        id: `${card.cid}-${i}`,
-        user: persona.user,
-        avatar: persona.avatar,
-        type: 'money',
-        amount,
-        message: pick(MESSAGES[persona.style as keyof typeof MESSAGES]),
-        arrivedAt,
-        expiresAt,
-        status: 'pending',
-      })
     }
+
+    // Money offer (default or fallback when no trade card matched)
+    const pctMap: Record<string, number> = {
+      lowball:   0.45 + Math.random() * 0.15,
+      fair:      0.75 + Math.random() * 0.15,
+      collector: 0.85 + Math.random() * 0.15,
+      grail:     1.0  + Math.random() * 0.25,
+      trader:    0.70 + Math.random() * 0.15,
+    }
+    const pct = pctMap[persona.style] ?? 0.75
+    const amount = Math.round(mkt * pct * 100) / 100
+
+    offers.push({
+      id: `${card.cid}-${i}`,
+      user: persona.user,
+      avatar: persona.avatar,
+      type: 'money',
+      amount,
+      message: pick(MESSAGES[persona.style as keyof typeof MESSAGES]),
+      arrivedAt,
+      expiresAt,
+      status: 'pending',
+    })
   }
 
   return offers.sort((a, b) => a.arrivedAt - b.arrivedAt)
