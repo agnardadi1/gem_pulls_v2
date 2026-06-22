@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Card Tool — Gem Pulls</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0a0f;
+    color: #e8e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  h1 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+    background: linear-gradient(135deg, #a78bfa, #60a5fa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .subtitle { font-size: 13px; color: #6b7280; margin-bottom: 24px; }
+
+  /* API Key bar */
+  .api-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    align-items: center;
+  }
+  .api-bar label { font-size: 12px; color: #9ca3af; white-space: nowrap; }
+  .api-bar input {
+    flex: 1;
+    background: #1a1a2e;
+    border: 1px solid #2d2d4e;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #e8e8f0;
+    font-size: 13px;
+    font-family: monospace;
+  }
+  .api-bar input:focus { outline: none; border-color: #7c3aed; }
+  .save-btn {
+    background: #7c3aed;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .save-btn:hover { background: #6d28d9; }
+
+  /* Main layout */
+  .main { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 2px dashed #2d2d4e;
+    border-radius: 16px;
+    background: #111122;
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .drop-zone.drag-over { border-color: #7c3aed; background: #1a1040; }
+  .drop-zone.has-image { border-color: #374151; }
+  .drop-zone img {
+    max-width: 100%;
+    max-height: 400px;
+    object-fit: contain;
+    border-radius: 10px;
+  }
+  .drop-hint {
+    text-align: center;
+    color: #4b5563;
+    pointer-events: none;
+  }
+  .drop-hint svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.4; }
+  .drop-hint p { font-size: 14px; margin-bottom: 4px; }
+  .drop-hint span { font-size: 12px; color: #374151; }
+  #file-input { display: none; }
+
+  /* Right panel */
+  .panel { display: flex; flex-direction: column; gap: 14px; }
+
+  .card-id-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #111122;
+    border-radius: 12px;
+    padding: 12px 16px;
+    border: 1px solid #1e1e3a;
+  }
+  .card-id-row label { font-size: 12px; color: #9ca3af; }
+  .card-id-row input {
+    width: 70px;
+    background: transparent;
+    border: none;
+    color: #a78bfa;
+    font-size: 22px;
+    font-weight: 700;
+    font-family: monospace;
+  }
+  .card-id-row input:focus { outline: none; }
+
+  .rarity-badge {
+    margin-left: auto;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .rarity-common   { background: #1f2937; color: #9ca3af; }
+  .rarity-uncommon { background: #1e3a5f; color: #60a5fa; }
+  .rarity-rare     { background: #2d1b69; color: #a78bfa; }
+  .rarity-chase    { background: #3b1f1f; color: #f87171; }
+
+  /* Form grid */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group.full { grid-column: 1 / -1; }
+  .form-group label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-group input, .form-group select {
+    background: #111122;
+    border: 1px solid #1e1e3a;
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: #e8e8f0;
+    font-size: 13px;
+  }
+  .form-group input:focus, .form-group select:focus {
+    outline: none;
+    border-color: #7c3aed;
+  }
+  .form-group select { cursor: pointer; }
+
+  /* Extract button */
+  .extract-btn {
+    width: 100%;
+    background: linear-gradient(135deg, #7c3aed, #2563eb);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 13px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    position: relative;
+  }
+  .extract-btn:hover { opacity: 0.9; }
+  .extract-btn:active { transform: scale(0.98); }
+  .extract-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .extract-btn .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Action buttons */
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .action-btn {
+    border: none;
+    border-radius: 10px;
+    padding: 11px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .action-btn:hover { opacity: 0.85; }
+  .btn-download { background: #065f46; color: #6ee7b7; }
+  .btn-copy     { background: #1e3a5f; color: #93c5fd; }
+  .btn-next     { background: #1f2937; color: #9ca3af; grid-column: 1 / -1; }
+
+  /* Output box */
+  .output-box {
+    background: #080810;
+    border: 1px solid #1e1e3a;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: #86efac;
+    line-height: 1.6;
+    word-break: break-all;
+    min-height: 54px;
+    white-space: pre-wrap;
+  }
+
+  /* Status */
+  .status {
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    display: none;
+  }
+  .status.show { display: block; }
+  .status.ok  { background: #052e16; color: #4ade80; }
+  .status.err { background: #3b0f0f; color: #f87171; }
+
+  @media (max-width: 700px) {
+    .main { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Card Tool</h1>
+<p class="subtitle">Drop a card screenshot → extract data → download image → copy entry</p>
+
+<!-- API Key -->
+<div class="api-bar">
+  <label>Anthropic API Key</label>
+  <input type="password" id="api-key" placeholder="sk-ant-..." />
+  <button class="save-btn" onclick="saveKey()">Save</button>
+</div>
+
+<div class="main">
+
+  <!-- Left: image drop -->
+  <div>
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <div class="drop-hint" id="drop-hint">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="3"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <path d="m21 15-5-5L5 21"/>
+        </svg>
+        <p>Drop or paste screenshot here</p>
+        <span>click to browse · Ctrl+V to paste</span>
+      </div>
+      <img id="preview-img" style="display:none" />
+    </div>
+    <input type="file" id="file-input" accept="image/*" onchange="handleFile(this.files[0])">
+  </div>
+
+  <!-- Right: panel -->
+  <div class="panel">
+
+    <!-- Card ID + rarity -->
+    <div class="card-id-row">
+      <label>Card ID</label>
+      <input type="text" id="card-id" value="031" maxlength="5" oninput="padId(this)" />
+      <span class="rarity-badge rarity-common" id="rarity-badge">Common</span>
+    </div>
+
+    <!-- Extract -->
+    <button class="extract-btn" id="extract-btn" onclick="extractData()" disabled>
+      Extract Card Data with AI
+    </button>
+
+    <div class="status" id="status"></div>
+
+    <!-- Form fields -->
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Player Name</label>
+        <input type="text" id="f-player" placeholder="e.g. LeBron James" />
+      </div>
+      <div class="form-group">
+        <label>Team</label>
+        <input type="text" id="f-team" placeholder="LAL" maxlength="4" />
+      </div>
+      <div class="form-group">
+        <label>Grade</label>
+        <input type="text" id="f-grade" placeholder="PSA 10" />
+      </div>
+      <div class="form-group full">
+        <label>Card Set</label>
+        <input type="text" id="f-set" placeholder="2021-22 Panini Revolution Basketball" />
+      </div>
+      <div class="form-group full">
+        <label>Variant</label>
+        <input type="text" id="f-variant" placeholder="Cubic" />
+      </div>
+      <div class="form-group">
+        <label>Card #</label>
+        <input type="text" id="f-cardnum" placeholder="57" />
+      </div>
+      <div class="form-group">
+        <label>Serial #</label>
+        <input type="text" id="f-serial" placeholder="/50" />
+      </div>
+      <div class="form-group">
+        <label>Price (USD)</label>
+        <input type="number" id="f-price" step="0.01" placeholder="112.50" oninput="updateRarity()" />
+      </div>
+      <div class="form-group">
+        <label>Rarity</label>
+        <select id="f-rarity" onchange="updateBadge()">
+          <option value="common">Common (&lt;$75)</option>
+          <option value="uncommon">Uncommon ($75–$349)</option>
+          <option value="rare">Rare ($350–$1,999)</option>
+          <option value="chase">Chase ($2,000+)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="output-box" id="output-box" onclick="copyEntry()">Click to copy entry</div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="action-btn btn-download" onclick="downloadImage()">⬇ Download Image</button>
+      <button class="action-btn btn-copy" onclick="copyEntry()">Copy Entry</button>
+      <button class="action-btn btn-next" onclick="nextCard()">→ Next Card (increment ID)</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── state ─────────────────────────────────────────────────────────────────────
+let currentFile = null
+let currentDataUrl = null
+
+// ── API key persistence ───────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('gp_api_key')
+  if (saved) document.getElementById('api-key').value = saved
+
+  const savedId = localStorage.getItem('gp_next_id')
+  if (savedId) document.getElementById('card-id').value = savedId
+
+  buildOutput()
+})
+
+function saveKey() {
+  const k = document.getElementById('api-key').value.trim()
+  if (!k) return
+  localStorage.setItem('gp_api_key', k)
+  setStatus('API key saved', 'ok')
+}
+
+// ── drag & drop ───────────────────────────────────────────────────────────────
+const dz = document.getElementById('drop-zone')
+
+document.addEventListener('paste', e => {
+  const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'))
+  if (item) handleFile(item.getAsFile())
+})
+
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over') })
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'))
+dz.addEventListener('drop', e => {
+  e.preventDefault()
+  dz.classList.remove('drag-over')
+  const f = e.dataTransfer.files[0]
+  if (f && f.type.startsWith('image/')) handleFile(f)
+})
+
+function handleFile(file) {
+  if (!file) return
+  currentFile = file
+
+  // Clear fields for fresh card
+  ;['f-player','f-team','f-set','f-variant','f-cardnum','f-serial','f-grade','f-price'].forEach(id => setField(id, ''))
+  document.getElementById('f-rarity').value = 'common'
+  updateBadge()
+  setStatus('', '')
+
+  const reader = new FileReader()
+  reader.onload = e => {
+    currentDataUrl = e.target.result
+    const img = document.getElementById('preview-img')
+    img.src = currentDataUrl
+    img.style.display = 'block'
+    document.getElementById('drop-hint').style.display = 'none'
+    dz.classList.add('has-image')
+    document.getElementById('extract-btn').disabled = false
+  }
+  reader.readAsDataURL(file)
+}
+
+// ── extract with Claude ───────────────────────────────────────────────────────
+async function extractData() {
+  const apiKey = document.getElementById('api-key').value.trim()
+  if (!apiKey) { setStatus('Enter your Anthropic API key first', 'err'); return }
+  if (!currentDataUrl) { setStatus('Upload an image first', 'err'); return }
+
+  const btn = document.getElementById('extract-btn')
+  btn.disabled = true
+  btn.innerHTML = '<span class="spinner"></span>Extracting...'
+  setStatus('', '')
+
+  const base64 = currentDataUrl.split(',')[1]
+  const mediaType = currentDataUrl.split(';')[0].split(':')[1]
+
+  const prompt = `You are extracting sports card data from a listing screenshot.
+
+Return ONLY a JSON object with these exact keys (no markdown, no explanation):
+{
+  "playerName": "Full player name",
+  "team": "3-4 letter team abbreviation (e.g. LAL, GSW, BOS)",
+  "cardSet": "Full card set name with year (e.g. 2021-22 Panini Revolution Basketball)",
+  "variant": "Parallel/variant name (e.g. Cubic, Silver, Gold, Base)",
+  "cardNumber": "Card number without # (e.g. 57), empty string if none",
+  "serialNumber": "Serial number WITH slash (e.g. /50), empty string if none",
+  "grade": "Grading info (e.g. PSA 10, BGS 9.5, Ungraded)",
+  "price": 112.50
+}
+
+Rules:
+- price must be a number (the sold/listing price in USD)
+- If the card has a PSA/BGS/SGC label visible, extract the grade from it
+- team: use standard NBA abbreviations
+- variant: if base card with no parallel, write "Base"
+- serialNumber: include the slash, e.g. "/50" not "50"`
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-calls': 'true',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      })
+    })
+
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.error?.message || res.statusText)
+    }
+
+    const data = await res.json()
+    const text = data.content[0].text.trim()
+
+    // Parse JSON (strip markdown fences if any)
+    const jsonStr = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim()
+    const card = JSON.parse(jsonStr)
+
+    // Populate fields
+    setField('f-player',  card.playerName  || '')
+    setField('f-team',    card.team        || '')
+    setField('f-set',     card.cardSet     || '')
+    setField('f-variant', card.variant     || '')
+    setField('f-cardnum', card.cardNumber  || '')
+    setField('f-serial',  card.serialNumber|| '')
+    setField('f-grade',   card.grade       || 'Ungraded')
+    setField('f-price',   card.price       || '')
+
+    updateRarity()
+    buildOutput()
+    setStatus('Data extracted successfully', 'ok')
+
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'err')
+  } finally {
+    btn.disabled = false
+    btn.innerHTML = 'Extract Card Data with AI'
+  }
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function setField(id, val) {
+  document.getElementById(id).value = val
+}
+
+function padId(input) {
+  // Auto-pad on blur only
+  buildOutput()
+}
+
+function getCardId() {
+  const raw = document.getElementById('card-id').value.trim()
+  return raw.padStart(3, '0')
+}
+
+function updateRarity() {
+  const price = parseFloat(document.getElementById('f-price').value) || 0
+  const r = price >= 2000 ? 'chase' : price >= 350 ? 'rare' : price >= 75 ? 'uncommon' : 'common'
+  document.getElementById('f-rarity').value = r
+  updateBadge()
+  buildOutput()
+}
+
+function updateBadge() {
+  const r = document.getElementById('f-rarity').value
+  const badge = document.getElementById('rarity-badge')
+  badge.className = 'rarity-badge rarity-' + r
+  badge.textContent = r.charAt(0).toUpperCase() + r.slice(1)
+  buildOutput()
+}
+
+// rebuild output whenever any field changes
+document.querySelectorAll('.form-grid input, .form-grid select').forEach(el => {
+  el.addEventListener('input', buildOutput)
+  el.addEventListener('change', buildOutput)
+})
+
+function buildOutput() {
+  const id      = getCardId()
+  const player  = document.getElementById('f-player').value  || ''
+  const team    = document.getElementById('f-team').value    || ''
+  const set     = document.getElementById('f-set').value     || ''
+  const variant = document.getElementById('f-variant').value || ''
+  const cardnum = document.getElementById('f-cardnum').value || ''
+  const serial  = document.getElementById('f-serial').value  || ''
+  const grade   = document.getElementById('f-grade').value   || 'Ungraded'
+  const price   = parseFloat(document.getElementById('f-price').value) || 0
+  const rarity  = document.getElementById('f-rarity').value  || 'common'
+
+  let entry = `{id:'${id}',playerName:'${player}',team:'${team}',cardSet:'${set}',variant:'${variant}'`
+  if (cardnum) entry += `,cardNumber:'${cardnum}'`
+  if (serial)  entry += `,serialNumber:'${serial}'`
+  entry += `,grade:'${grade}',rarity:'${rarity}',actualEbayPrice:${price},imageUrl:'/cards/${id}.jpg'},`
+
+  document.getElementById('output-box').textContent = entry
+}
+
+function copyEntry() {
+  const text = document.getElementById('output-box').textContent
+  if (text === 'Click to copy entry') return
+  navigator.clipboard.writeText(text).then(() => setStatus('Copied to clipboard!', 'ok'))
+}
+
+function downloadImage() {
+  if (!currentDataUrl) { setStatus('No image loaded', 'err'); return }
+  const id = getCardId()
+  const a = document.createElement('a')
+  a.href = currentDataUrl
+  a.download = `${id}.jpg`
+  a.click()
+  setStatus(`Downloaded as ${id}.jpg — move it to public/cards/`, 'ok')
+}
+
+function nextCard() {
+  const current = parseInt(document.getElementById('card-id').value) || 31
+  const next = String(current + 1).padStart(3, '0')
+  document.getElementById('card-id').value = next
+  localStorage.setItem('gp_next_id', next)
+
+  // Clear image + fields
+  currentFile = null
+  currentDataUrl = null
+  document.getElementById('preview-img').style.display = 'none'
+  document.getElementById('drop-hint').style.display = ''
+  document.getElementById('drop-zone').classList.remove('has-image')
+  document.getElementById('extract-btn').disabled = true
+  ;['f-player','f-team','f-set','f-variant','f-cardnum','f-serial','f-grade','f-price'].forEach(id => setField(id, ''))
+  document.getElementById('f-rarity').value = 'common'
+  updateBadge()
+  buildOutput()
+  setStatus('Ready for next card', 'ok')
+}
+
+function setStatus(msg, type) {
+  const el = document.getElementById('status')
+  el.textContent = msg
+  el.className = 'status' + (msg ? ' show ' + type : '')
+}
+</script>
+</body>
+</html>
