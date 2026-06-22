@@ -7,6 +7,7 @@ import PackMarket from '../../apps/PackMarket/PackMarket'
 import EbayApp from '../../apps/eBay/EbayApp'
 import InstagramApp from '../../apps/Instagram/InstagramApp'
 import WhatnotApp from '../../apps/Whatnot/WhatnotApp'
+import PayPalApp from '../../apps/PayPal/PayPalApp'
 import type { AppId, Notification } from '../../types'
 
 const APPS: Record<Exclude<AppId, 'home' | 'settings'>, React.ComponentType> = {
@@ -14,6 +15,7 @@ const APPS: Record<Exclude<AppId, 'home' | 'settings'>, React.ComponentType> = {
   'ebay': EbayApp,
   'instagram': InstagramApp,
   'whatnot': WhatnotApp,
+  'paypal': PayPalApp,
 }
 
 const APP_ICONS: Record<AppId, React.ReactNode> = {
@@ -50,6 +52,13 @@ const APP_ICONS: Record<AppId, React.ReactNode> = {
     <svg viewBox="0 0 60 60" width="28" height="28">
       <rect width="60" height="60" rx="13" fill="#FF5100"/>
       <text y="46" x="5" fontSize="38" fontWeight="900" fontFamily="Arial Black,Arial" fill="white">W</text>
+    </svg>
+  ),
+  'paypal': (
+    <svg viewBox="0 0 60 60" width="28" height="28">
+      <rect width="60" height="60" rx="13" fill="#003087"/>
+      <path d="M38 18c1.5 2.5 1.2 5.5-.5 7.5-1.8 2.2-4.8 3.5-8.5 3.5h-2.5c-.6 0-1.1.4-1.2 1l-1.3 8h-4.5l3.5-22h8c3 0 5.5 1 7 2z" fill="#009cde"/>
+      <path d="M40 22c.8 1.2 1.1 2.8.9 4.5C40 31 36.5 34 31 34h-2c-.5 0-1 .4-1.1.9L26.5 42H22l3.5-22h8.5c3 0 5 1 6 2z" fill="white" fillOpacity="0.25"/>
     </svg>
   ),
 }

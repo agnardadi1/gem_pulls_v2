@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Card, EbayRep, Stats } from '../types'
+import { usePayPalStore, type TxCategory } from './usePayPalStore'
+
+// Metadata describing a money movement, logged to the PayPal ledger.
+export interface TxMeta {
+  name: string
+  note: string
+  category: TxCategory
+}
 
 export interface IgProfile {
   handle: string
@@ -23,8 +31,9 @@ interface GameState {
   addCard: (card: Card) => void
   updateCard: (cid: string, updates: Partial<Card>) => void
   removeCard: (cid: string) => void
-  addEarnings: (amount: number) => void
-  spendBankroll: (amount: number) => void
+  addEarnings: (amount: number, meta?: TxMeta) => void
+  spendBankroll: (amount: number, meta?: TxMeta) => void
+  spendCash: (amount: number, meta?: TxMeta) => void
   resetRun: () => void
   setWallpaper: (dataUrl: string | null) => void
   setIgProfile: (updates: Partial<IgProfile>) => void
@@ -80,7 +89,7 @@ export const useGameStore = create<GameState>()(
       removeCard: (cid) =>
         set((s) => ({ collection: s.collection.filter((c) => c.cid !== cid) })),
 
-      addEarnings: (amount) =>
+      addEarnings: (amount, meta) => {
         set((s) => {
           const newBR = s.bankroll + amount
           const newAllEarned = s.stats.allEarned + amount
@@ -99,17 +108,32 @@ export const useGameStore = create<GameState>()(
               bestBR: Math.max(s.stats.bestBR, newBR),
             },
           }
-        }),
+        })
+        if (meta) usePayPalStore.getState().logTransaction({ ...meta, amount })
+      },
 
-      spendBankroll: (amount) =>
+      // Buying a pack — decrements bankroll and counts toward pack stats.
+      spendBankroll: (amount, meta) => {
         set((s) => ({
           bankroll: s.bankroll - amount,
           stats: { ...s.stats, spent: s.stats.spent + amount, packs: s.stats.packs + 1, allPacks: s.stats.allPacks + 1 },
-        })),
+        }))
+        if (meta) usePayPalStore.getState().logTransaction({ ...meta, amount: -amount })
+      },
+
+      // Generic cash spend (e.g. buying a card off Instagram) — no pack stats.
+      spendCash: (amount, meta) => {
+        set((s) => ({
+          bankroll: s.bankroll - amount,
+          stats: { ...s.stats, spent: s.stats.spent + amount },
+        }))
+        if (meta) usePayPalStore.getState().logTransaction({ ...meta, amount: -amount })
+      },
 
       setWallpaper: (dataUrl) => set({ wallpaper: dataUrl }),
 
-      resetRun: () =>
+      resetRun: () => {
+        usePayPalStore.getState().clearLedger()
         set((s) => ({
           bankroll: 500,
           collection: [],
@@ -123,7 +147,8 @@ export const useGameStore = create<GameState>()(
             bestPacks: Math.max(s.stats.bestPacks, s.stats.packs),
             bestCard: s.stats.bestCard,
           },
-        })),
+        }))
+      },
     }),
     { name: 'gem-pulls-v1' }
   )

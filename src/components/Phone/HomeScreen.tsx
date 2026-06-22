@@ -43,6 +43,14 @@ const WhatnotIcon = () => (
   </svg>
 )
 
+const PayPalIcon = () => (
+  <svg viewBox="0 0 60 60" className="w-full h-full">
+    <rect width="60" height="60" rx="13" fill="#003087"/>
+    <path d="M38 18c1.5 2.5 1.2 5.5-.5 7.5-1.8 2.2-4.8 3.5-8.5 3.5h-2.5c-.6 0-1.1.4-1.2 1l-1.3 8h-4.5l3.5-22h8c3 0 5.5 1 7 2z" fill="#009cde"/>
+    <path d="M40 22c.8 1.2 1.1 2.8.9 4.5C40 31 36.5 34 31 34h-2c-.5 0-1 .4-1.1.9L26.5 42H22l3.5-22h8.5c3 0 5 1 6 2z" fill="white" fillOpacity="0.25"/>
+  </svg>
+)
+
 interface AppDef { id: AppId; label: string; minLevel: number; icon: React.ReactNode }
 
 const APPS: AppDef[] = [
@@ -50,6 +58,7 @@ const APPS: AppDef[] = [
   { id: 'ebay',        label: 'eBay',        minLevel: 1, icon: <EbayIcon /> },
   { id: 'instagram',   label: 'Instagram',   minLevel: 2, icon: <IgIcon /> },
   { id: 'whatnot',     label: 'Whatnot',     minLevel: 3, icon: <WhatnotIcon /> },
+  { id: 'paypal',      label: 'PayPal',      minLevel: 1, icon: <PayPalIcon /> },
 ]
 
 function AppIcon({ app, level, onTap }: { app: AppDef; level: number; onTap: () => void }) {
@@ -81,7 +90,7 @@ function AppIcon({ app, level, onTap }: { app: AppDef; level: number; onTap: () 
 
 export default function HomeScreen() {
   const { openApp } = usePhoneStore()
-  const { bankroll, level, stats, wallpaper, setWallpaper, resetRun } = useGameStore()
+  const { level, stats, wallpaper, setWallpaper, resetRun } = useGameStore()
   const { notifications, dismiss } = useNotificationStore()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -120,42 +129,45 @@ export default function HomeScreen() {
         )}
       </div>
 
-      {/* ── Bankroll section ── */}
-      <div className="flex flex-col items-center" style={{ paddingTop: '56px' }}>
-        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: 700, letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '8px' }}>
-          Bankroll
+      {/* ── Level / progression hero ── */}
+      <div className="flex flex-col items-center" style={{ paddingTop: '64px' }}>
+        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: 700, letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '10px' }}>
+          Level {level}
         </div>
         <div style={{
           fontFamily: "'Barlow Condensed', sans-serif",
-          fontSize: '60px', fontWeight: 900, color: 'white',
-          letterSpacing: '-2px', lineHeight: 1,
+          fontSize: '56px', fontWeight: 900, color: 'white',
+          letterSpacing: '-1.5px', lineHeight: 1,
           textShadow: '0 2px 32px rgba(0,0,0,0.7)',
         }}>
-          ${bankroll.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {levelName}
         </div>
 
-        <div className="mt-4 flex items-center gap-2 rounded-full px-4 py-2"
-             style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <span style={{ color: '#fde047', fontSize: '8px' }}>●</span>
-          <span style={{ color: 'rgba(255,255,255,0.8)', fontWeight: 600, fontSize: '13px', letterSpacing: '0.2px' }}>
-            LVL {level} · {levelName}
-          </span>
-        </div>
-
-        {nextThreshold && (
-          <div className="mt-4" style={{ width: '180px' }}>
-            <div style={{ height: '4px', borderRadius: '99px', overflow: 'hidden', background: 'rgba(255,255,255,0.1)' }}>
+        {nextThreshold ? (
+          <div className="mt-5" style={{ width: '200px' }}>
+            <div style={{ height: '6px', borderRadius: '99px', overflow: 'hidden', background: 'rgba(255,255,255,0.12)' }}>
               <div style={{
                 height: '100%', borderRadius: '99px',
                 width: `${progress * 100}%`,
                 background: 'linear-gradient(90deg, #7c3aed, #a855f7)',
                 transition: 'width 0.4s ease',
+                boxShadow: '0 0 12px rgba(168,85,247,0.6)',
               }} />
             </div>
-            <div className="flex justify-between mt-1.5">
-              <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '10px' }}>$0</span>
-              <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '10px' }}>${nextThreshold.toLocaleString()}</span>
+            <div className="flex justify-between mt-2">
+              <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', fontWeight: 600 }}>
+                ${stats.allEarned.toLocaleString('en-US', { maximumFractionDigits: 0 })} earned
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>
+                ${nextThreshold.toLocaleString()}
+              </span>
             </div>
+          </div>
+        ) : (
+          <div className="mt-5 flex items-center gap-2 rounded-full px-4 py-2"
+               style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <span style={{ color: '#fde047', fontSize: '8px' }}>●</span>
+            <span style={{ color: 'rgba(255,255,255,0.8)', fontWeight: 600, fontSize: '13px' }}>Max level reached</span>
           </div>
         )}
       </div>

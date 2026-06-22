@@ -63,7 +63,7 @@ export default function EbayApp() {
     useGameStore.setState(() => ({ ebayRep: newRep }))
     if (soldPrice !== null) {
       updateCard(c.cid, { sold: true, listed: false, sellPrice: soldPrice, ebaySoldPrice: soldPrice, ebayFeeAmt: Math.round((latest.ebayPrice || 0) * EBAY_FEE_RATE * 100) / 100 })
-      addEarnings(soldPrice)
+      addEarnings(soldPrice, { name: latest.playerName, note: 'Sold on eBay', category: 'ebay' })
       pushNotif('ebay', 'Item Sold!', `${latest.playerName} sold for $${soldPrice.toFixed(2)}`)
     } else {
       updateCard(c.cid, { listed: false, ebayFailed: true, failReason })

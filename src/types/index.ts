@@ -77,7 +77,7 @@ export interface Stats {
   bestCard: { name: string; price: number } | null
 }
 
-export type AppId = 'home' | 'pack-market' | 'ebay' | 'instagram' | 'whatnot' | 'settings'
+export type AppId = 'home' | 'pack-market' | 'ebay' | 'instagram' | 'whatnot' | 'settings' | 'paypal'
 
 export interface Notification {
   id: string

@@ -32,7 +32,7 @@ export default function PackOpener({ pack, onDone }: Props) {
   useEffect(() => {
     if (initRef.current) return
     initRef.current = true
-    spendBankroll(pack.price)
+    spendBankroll(pack.price, { name: pack.name, note: 'Opened a pack', category: 'pack' })
     setCards(openPack(pack))
   }, [])
 

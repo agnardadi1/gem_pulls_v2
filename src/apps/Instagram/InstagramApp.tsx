@@ -152,7 +152,7 @@ function RarityTag({ rarity }: { rarity: string }) {
 
 export default function InstagramApp() {
   const { closeApp } = usePhoneStore()
-  const { collection, updateCard, addEarnings, spendBankroll, addCard, removeCard, bankroll, setBankroll, stats, igProfile, setIgProfile } = useGameStore()
+  const { collection, updateCard, addEarnings, spendCash, addCard, removeCard, bankroll, stats, igProfile, setIgProfile } = useGameStore()
   const pushNotif = useNotificationStore(s => s.push)
 
   const [tab, setTab] = useState<Tab>('home')
@@ -226,7 +226,7 @@ export default function InstagramApp() {
 
   function finalizeBuy(deal: Deal, cash: number, tradeCid: string | null) {
     if (bankroll < cash) return false
-    setBankroll(bankroll - cash)
+    spendCash(cash, { name: deal.playerName, note: 'Bought on Instagram', category: 'instagram' })
     if (tradeCid) removeCard(tradeCid)
     addCard({
       cid: `buy-${Date.now()}`,
@@ -305,7 +305,7 @@ export default function InstagramApp() {
 
   function acceptMoney(card: Card, offer: IgOffer) {
     updateCard(card.cid, { sold: true, listed: false, sellPrice: offer.amount!, platform: 'instagram', igOffers: settleOthers(card, offer.id) })
-    addEarnings(offer.amount!)
+    addEarnings(offer.amount!, { name: card.playerName, note: `Sold to @${offer.user}`, category: 'instagram' })
     pushNotif('instagram', 'Sale complete', `${card.playerName} sold to @${offer.user} for $${offer.amount!.toFixed(2)}`)
     setActiveOffer(null); setOverlay(null)
   }
@@ -313,8 +313,8 @@ export default function InstagramApp() {
   function acceptTrade(card: Card, offer: IgOffer) {
     if (!offer.tradeCard) return
     if (offer.cashSide === 'seller' && offer.amount && bankroll < offer.amount) return
-    if (offer.cashSide === 'seller' && offer.amount) spendBankroll(offer.amount)
-    if (offer.cashSide === 'buyer' && offer.amount) addEarnings(offer.amount)
+    if (offer.cashSide === 'seller' && offer.amount) spendCash(offer.amount, { name: `@${offer.user}`, note: `Trade sweetener · ${card.playerName}`, category: 'instagram' })
+    if (offer.cashSide === 'buyer' && offer.amount) addEarnings(offer.amount, { name: `@${offer.user}`, note: `Trade sweetener · ${card.playerName}`, category: 'instagram' })
     updateCard(card.cid, { sold: true, listed: false, sellPrice: offer.tradeCard.value, platform: 'instagram', igOffers: settleOthers(card, offer.id) })
     const real = CARDS.find(c => c.playerName === offer.tradeCard!.playerName && c.cardSet === offer.tradeCard!.cardSet)
     addCard({
@@ -341,7 +341,7 @@ export default function InstagramApp() {
     const accepted = Math.random() < acceptChance
     if (accepted) {
       updateCard(card.cid, { sold: true, listed: false, sellPrice: price, platform: 'instagram', igOffers: settleOthers(card, offer.id) })
-      addEarnings(price)
+      addEarnings(price, { name: card.playerName, note: `Sold to @${offer.user}`, category: 'instagram' })
       pushNotif('instagram', 'Counter accepted!', `@${offer.user} accepted $${price.toFixed(2)} for ${card.playerName}`)
     } else {
       updateCard(card.cid, { igOffers: (card.igOffers || []).map(o => o.id === offer.id ? { ...o, status: 'declined' as const } : o) })
