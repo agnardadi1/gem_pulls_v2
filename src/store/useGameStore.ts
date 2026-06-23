@@ -136,6 +136,7 @@ export const useGameStore = create<GameState>()(
         usePayPalStore.getState().clearLedger()
         set((s) => ({
           bankroll: 500,
+          level: 1,
           collection: [],
           ebayRep: { feedback: 0, positive: 0, negative: 0 },
           stats: {
