@@ -1,0 +1,70 @@
+import { useGameStore } from '../store/useGameStore'
+import { useNotificationStore } from '../store/useNotificationStore'
+import { followUpForUser, makeUnsolicitedOffer } from '../apps/Instagram/igLogic'
+import { makeEbayOffer } from '../apps/eBay/ebayLogic'
+
+// Per-tick probabilities (the world ticks every ~3s from Phone). Tuned so the
+// arrival rate roughly matches the old per-app cadence.
+const IG_UNSOLICITED_CHANCE = 0.06   // capped at 2 pending at a time
+const EBAY_OFFER_CHANCE = 0.045      // per eligible Best Offer listing
+
+// Advances the "world" — buyer DMs and eBay offers — on a global cadence so
+// they keep arriving (and notifying) regardless of which app is open. Reads
+// and writes the stores via getState so it's safe to call from a bare timer.
+export function runWorldTick() {
+  const now = Date.now()
+  const { collection, updateCard } = useGameStore.getState()
+  const push = useNotificationStore.getState().push
+
+  // ── Instagram: follow-up nudges on offers you've left sitting ──
+  collection.forEach(card => {
+    if (card.sold) return
+    const offers = card.igOffers
+    if (!offers || !offers.length) return
+    let changed = false
+    const next = offers.map(o => {
+      if (o.status !== 'pending' || o.arrivedAt > now || o.expiresAt <= now) return o
+      const frac = (now - o.arrivedAt) / (o.expiresAt - o.arrivedAt)
+      const want = frac > 0.75 ? 2 : frac > 0.4 ? 1 : 0
+      const have = o.followUps?.length ?? 0
+      if (want <= have) return o
+      const adds: { text: string; at: number }[] = []
+      for (let k = have; k < want; k++) adds.push({ text: followUpForUser(o.user), at: now })
+      changed = true
+      return { ...o, followUps: [...(o.followUps || []), ...adds] }
+    })
+    if (changed) updateCard(card.cid, { igOffers: next })
+  })
+
+  // ── Instagram: an out-of-the-blue DM about a card you never listed ──
+  const pendingUns = collection.filter(c => !c.sold && (c.igOffers || []).some(o => o.unsolicited && o.status === 'pending' && o.expiresAt > now)).length
+  if (pendingUns < 2 && Math.random() < IG_UNSOLICITED_CHANCE) {
+    const candidates = collection.filter(c => !c.sold && !c.listed && !c.igPostedAt && !(c.igOffers && c.igOffers.length))
+    if (candidates.length) {
+      const card = candidates[Math.floor(Math.random() * candidates.length)]
+      const offer = makeUnsolicitedOffer(card, now)
+      updateCard(card.cid, { igOffers: [offer] })
+      push('instagram', 'New DM', `@${offer.user} wants to buy your ${card.playerName}`)
+    }
+  }
+
+  // ── eBay: expire stale Best Offers, occasionally surface a new one ──
+  collection.forEach(c => {
+    if (!(c.platform === 'ebay' && c.listed && !c.sold && c.ebayBestOffer)) return
+    let offers = c.ebayOffers || []
+    let changed = false
+    offers = offers.map(o => {
+      if (o.status === 'pending' && o.expiresAt <= now) { changed = true; return { ...o, status: 'expired' as const } }
+      return o
+    })
+    const hasPending = offers.some(o => o.status === 'pending')
+    const beforeEnd = now < (c.auctionEndTime || 0)
+    if (!hasPending && offers.length < 3 && beforeEnd && Math.random() < EBAY_OFFER_CHANCE) {
+      const offer = makeEbayOffer(c.ebayPrice || 0, now)
+      offers = [...offers, offer]
+      changed = true
+      push('ebay', 'New offer', `${offer.user} offered $${offer.amount.toFixed(2)} for ${c.playerName}`)
+    }
+    if (changed) updateCard(c.cid, { ebayOffers: offers })
+  })
+}

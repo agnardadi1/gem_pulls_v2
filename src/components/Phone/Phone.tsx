@@ -8,6 +8,7 @@ import EbayApp from '../../apps/eBay/EbayApp'
 import InstagramApp from '../../apps/Instagram/InstagramApp'
 import WhatnotApp from '../../apps/Whatnot/WhatnotApp'
 import PayPalApp from '../../apps/PayPal/PayPalApp'
+import { runWorldTick } from '../../game/worldTick'
 import type { AppId, Notification } from '../../types'
 
 const APPS: Record<Exclude<AppId, 'home' | 'settings'>, React.ComponentType> = {
@@ -120,6 +121,13 @@ export default function Phone() {
     const id = setInterval(() => {
       setTime(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }))
     }, 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Global world ticker — drives buyer DMs and eBay offers regardless of which
+  // app is open, so notifications actually reach you while you're elsewhere.
+  useEffect(() => {
+    const id = setInterval(runWorldTick, 3000)
     return () => clearInterval(id)
   }, [])
 

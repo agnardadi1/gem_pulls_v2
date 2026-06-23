@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { usePhoneStore } from '../../store/usePhoneStore'
 import { useGameStore } from '../../store/useGameStore'
 import { useNotificationStore } from '../../store/useNotificationStore'
-import { genEbayBids, resolveEbay, ebayRepInfo, SHIP_OPTIONS, DUR_OPTIONS_AUCTION, DUR_OPTIONS_BIN, EBAY_FEE_RATE, makeEbayOffer, counterAccepted } from './ebayLogic'
+import { genEbayBids, resolveEbay, ebayRepInfo, SHIP_OPTIONS, DUR_OPTIONS_AUCTION, DUR_OPTIONS_BIN, EBAY_FEE_RATE, counterAccepted } from './ebayLogic'
 import EbayProfile from './EbayProfile'
 import type { Card, EbayOffer } from '../../types'
 
@@ -33,34 +33,9 @@ export default function EbayApp() {
     const id = setInterval(() => {
       setTick(t => t + 1)
       checkAndResolve()
-      tickBestOffers()
     }, 4000)
     return () => clearInterval(id)
   }, [collection, ebayRep])
-
-  // Best Offer lifecycle: expire stale offers, occasionally surface a new one.
-  function tickBestOffers() {
-    const now = Date.now()
-    const coll = useGameStore.getState().collection
-    coll.forEach(c => {
-      if (!(c.platform === 'ebay' && c.listed && !c.sold && c.ebayBestOffer)) return
-      let offers = c.ebayOffers || []
-      let changed = false
-      offers = offers.map(o => {
-        if (o.status === 'pending' && o.expiresAt <= now) { changed = true; return { ...o, status: 'expired' as const } }
-        return o
-      })
-      const hasPending = offers.some(o => o.status === 'pending')
-      const beforeEnd = now < (c.auctionEndTime || 0)
-      if (!hasPending && offers.length < 3 && beforeEnd && Math.random() < 0.06) {
-        const offer = makeEbayOffer(c.ebayPrice || 0, now)
-        offers = [...offers, offer]
-        changed = true
-        useNotificationStore.getState().push('ebay', 'New offer', `${offer.user} offered $${offer.amount.toFixed(2)} for ${c.playerName}`)
-      }
-      if (changed) useGameStore.getState().updateCard(c.cid, { ebayOffers: offers })
-    })
-  }
 
   // On mount: resume any pending auctions (eBay listings only — never Instagram posts)
   useEffect(() => {

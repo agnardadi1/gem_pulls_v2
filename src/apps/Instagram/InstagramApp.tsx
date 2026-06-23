@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { usePhoneStore } from '../../store/usePhoneStore'
 import { useGameStore } from '../../store/useGameStore'
 import { useNotificationStore } from '../../store/useNotificationStore'
-import { genIgOffers, sellerRespond, followUpForUser, makeUnsolicitedOffer } from './igLogic'
+import { genIgOffers, sellerRespond } from './igLogic'
 import { RARITY_META, CARDS } from '../PackMarket/packData'
 import type { Card, IgOffer } from '../../types'
 import type { Rarity } from '../PackMarket/packData'
@@ -174,45 +174,10 @@ export default function InstagramApp() {
   const [counterCash, setCounterCash] = useState(0)
   const [counterResult, setCounterResult] = useState<{ offerId: string; price: number; accepted: boolean } | null>(null)
 
+  // Re-render to keep countdowns / freshly-arrived DMs live. Generation of DMs
+  // happens globally in worldTick so it runs even when this app is closed.
   useEffect(() => {
-    const id = setInterval(() => {
-      setTick(t => t + 1)
-      const now = Date.now()
-      const { collection: coll, updateCard: upd } = useGameStore.getState()
-      const push = useNotificationStore.getState().push
-
-      // 1) Buyers nudge you if you let a pending offer sit unanswered.
-      coll.forEach(card => {
-        if (card.sold) return
-        const offers = card.igOffers
-        if (!offers || !offers.length) return
-        let changed = false
-        const next = offers.map(o => {
-          if (o.status !== 'pending' || o.arrivedAt > now || o.expiresAt <= now) return o
-          const frac = (now - o.arrivedAt) / (o.expiresAt - o.arrivedAt)
-          const want = frac > 0.75 ? 2 : frac > 0.4 ? 1 : 0
-          const have = o.followUps?.length ?? 0
-          if (want <= have) return o
-          const adds: { text: string; at: number }[] = []
-          for (let k = have; k < want; k++) adds.push({ text: followUpForUser(o.user), at: now })
-          changed = true
-          return { ...o, followUps: [...(o.followUps || []), ...adds] }
-        })
-        if (changed) upd(card.cid, { igOffers: next })
-      })
-
-      // 2) Occasionally a buyer DMs about a card you never even listed.
-      const pendingUns = coll.filter(c => !c.sold && (c.igOffers || []).some(o => o.unsolicited && o.status === 'pending' && o.expiresAt > now)).length
-      if (pendingUns < 2 && Math.random() < 0.04) {
-        const candidates = coll.filter(c => !c.sold && !c.listed && !c.igPostedAt && !(c.igOffers && c.igOffers.length))
-        if (candidates.length) {
-          const card = candidates[Math.floor(Math.random() * candidates.length)]
-          const offer = makeUnsolicitedOffer(card, now)
-          upd(card.cid, { igOffers: [offer] })
-          push('instagram', 'New DM', `@${offer.user} wants to buy your ${card.playerName}`)
-        }
-      }
-    }, 2000)
+    const id = setInterval(() => setTick(t => t + 1), 2000)
     return () => clearInterval(id)
   }, [])
 

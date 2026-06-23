@@ -6,7 +6,7 @@ import { useGameStore } from '../../store/useGameStore'
 const CARD_W = 220
 const CARD_H = 308
 // Commons below this value get flagged as a "DUD" on the summary.
-const DUD_MAX = 20
+const DUD_MAX = 35
 
 interface Props {
   pack: PackType
