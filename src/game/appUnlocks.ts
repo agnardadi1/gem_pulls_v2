@@ -8,7 +8,7 @@ export const APP_MIN_LEVEL: Record<AppId, number> = {
   'settings': 1,
   'pack-market': 1,
   'ebay': 1,
-  'instagram': 2,
+  'instagram': 1,
   'whatnot': 3,
   'paypal': 1,
 }
