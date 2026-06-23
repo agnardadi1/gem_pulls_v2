@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { usePhoneStore } from '../../store/usePhoneStore'
 import { useGameStore } from '../../store/useGameStore'
 import { useNotificationStore } from '../../store/useNotificationStore'
-import { genEbayBids, resolveEbay, ebayRepInfo, SHIP_OPTIONS, DUR_OPTIONS_AUCTION, DUR_OPTIONS_BIN, EBAY_FEE_RATE } from './ebayLogic'
+import { genEbayBids, resolveEbay, ebayRepInfo, SHIP_OPTIONS, DUR_OPTIONS_AUCTION, DUR_OPTIONS_BIN, EBAY_FEE_RATE, makeEbayOffer, counterAccepted } from './ebayLogic'
 import EbayProfile from './EbayProfile'
-import type { Card } from '../../types'
+import type { Card, EbayOffer } from '../../types'
 
 type View = 'listings' | 'pick-card' | 'listing-flow' | 'profile'
 
@@ -24,6 +24,7 @@ export default function EbayApp() {
   const [price, setPrice] = useState<number | null>(null)
   const [ship, setShip] = useState<typeof SHIP_OPTIONS[0] | null>(null)
   const [dur, setDur] = useState<{ days: number; ms: number; label: string } | null>(null)
+  const [bestOffer, setBestOffer] = useState(false)
 
   const schedTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
@@ -32,9 +33,34 @@ export default function EbayApp() {
     const id = setInterval(() => {
       setTick(t => t + 1)
       checkAndResolve()
+      tickBestOffers()
     }, 4000)
     return () => clearInterval(id)
   }, [collection, ebayRep])
+
+  // Best Offer lifecycle: expire stale offers, occasionally surface a new one.
+  function tickBestOffers() {
+    const now = Date.now()
+    const coll = useGameStore.getState().collection
+    coll.forEach(c => {
+      if (!(c.platform === 'ebay' && c.listed && !c.sold && c.ebayBestOffer)) return
+      let offers = c.ebayOffers || []
+      let changed = false
+      offers = offers.map(o => {
+        if (o.status === 'pending' && o.expiresAt <= now) { changed = true; return { ...o, status: 'expired' as const } }
+        return o
+      })
+      const hasPending = offers.some(o => o.status === 'pending')
+      const beforeEnd = now < (c.auctionEndTime || 0)
+      if (!hasPending && offers.length < 3 && beforeEnd && Math.random() < 0.06) {
+        const offer = makeEbayOffer(c.ebayPrice || 0, now)
+        offers = [...offers, offer]
+        changed = true
+        useNotificationStore.getState().push('ebay', 'New offer', `${offer.user} offered $${offer.amount.toFixed(2)} for ${c.playerName}`)
+      }
+      if (changed) useGameStore.getState().updateCard(c.cid, { ebayOffers: offers })
+    })
+  }
 
   // On mount: resume any pending auctions (eBay listings only — never Instagram posts)
   useEffect(() => {
@@ -58,6 +84,8 @@ export default function EbayApp() {
   function resolveCard(c: Card) {
     const latest = useGameStore.getState().collection.find(x => x.cid === c.cid)
     if (!latest || latest.sold) return
+    // Don't fail/close a listing while a Best Offer is still on the table.
+    if ((latest.ebayOffers || []).some(o => o.status === 'pending' && o.expiresAt > Date.now())) return
     const repNow = useGameStore.getState().ebayRep
     const { soldPrice, failReason, newRep } = resolveEbay(latest, repNow)
     useGameStore.setState(() => ({ ebayRep: newRep }))
@@ -74,6 +102,38 @@ export default function EbayApp() {
   function checkAndResolve() {
     const now = Date.now()
     collection.filter(c => c.platform === 'ebay' && c.listed && !c.sold && (c.auctionEndTime || 0) <= now).forEach(resolveCard)
+  }
+
+  // ── Best Offer handlers ──
+  function sellViaOffer(card: Card, price: number) {
+    const fee = Math.round(price * EBAY_FEE_RATE * 100) / 100
+    const shipC = card.ebayShippingCost || 0
+    const net = Math.max(0, Math.round((price - fee - shipC) * 100) / 100)
+    const rep = useGameStore.getState().ebayRep
+    useGameStore.setState({ ebayRep: { ...rep, feedback: rep.feedback + 1, positive: rep.positive + 1 } })
+    updateCard(card.cid, {
+      sold: true, listed: false, sellPrice: net, ebaySoldPrice: price, ebayFeeAmt: fee,
+      ebayOffers: (card.ebayOffers || []).map(o => o.status === 'pending' ? { ...o, status: 'declined' as const } : o),
+    })
+    addEarnings(net, { name: card.playerName, note: 'Best Offer accepted', category: 'ebay' })
+    pushNotif('ebay', 'Offer accepted — sold!', `${card.playerName} sold for $${price.toFixed(2)}`)
+  }
+
+  function acceptOffer(card: Card, offer: EbayOffer) {
+    sellViaOffer(card, offer.amount)
+  }
+
+  function declineOffer(card: Card, offer: EbayOffer) {
+    updateCard(card.cid, { ebayOffers: (card.ebayOffers || []).map(o => o.id === offer.id ? { ...o, status: 'declined' as const } : o) })
+  }
+
+  function counterOffer(card: Card, offer: EbayOffer, price: number) {
+    if (counterAccepted(offer, card.ebayPrice || 0, price)) {
+      sellViaOffer(card, price)
+    } else {
+      updateCard(card.cid, { ebayOffers: (card.ebayOffers || []).map(o => o.id === offer.id ? { ...o, status: 'declined' as const } : o) })
+      pushNotif('ebay', 'Counter declined', `${offer.user} passed on your $${price.toFixed(2)} counter`)
+    }
   }
 
   // ── Listing flow helpers ──
@@ -105,11 +165,11 @@ export default function EbayApp() {
   }
 
   function resetFlow() {
-    setListCard(null); setStep(1); setFmt(null); setPrice(null); setShip(null); setDur(null)
+    setListCard(null); setStep(1); setFmt(null); setPrice(null); setShip(null); setDur(null); setBestOffer(false)
   }
 
   function startListing(card: Card) {
-    setListCard(card); setStep(1); setFmt(null); setPrice(null); setShip(null); setDur(null)
+    setListCard(card); setStep(1); setFmt(null); setPrice(null); setShip(null); setDur(null); setBestOffer(false)
     setView('listing-flow')
   }
 
@@ -130,11 +190,13 @@ export default function EbayApp() {
       failReason: null,
     }
     cardWithDetails.bidEvents = genEbayBids(cardWithDetails, endTime, ebayRep)
+    const useBO = fmt === 'bin' && bestOffer
     updateCard(listCard.cid, {
       listed: true, platform: 'ebay', ebayFormat: fmt, ebayPrice: price,
       ebayShipping: ship.id, ebayShippingCost: ship.cost,
       auctionEndTime: endTime, auctionCleared: false, ebayFailed: false, failReason: null,
       bidEvents: cardWithDetails.bidEvents,
+      ebayBestOffer: useBO, ebayOffers: useBO ? [] : undefined,
     })
     schedCard(cardWithDetails)
     setView('listings')
@@ -240,8 +302,10 @@ export default function EbayApp() {
                 const ending = remaining < 60000
                 const pastBids = (c.bidEvents || []).filter(e => e.type === 'bid' && e.t <= Date.now())
                 const curBid = pastBids.length ? pastBids[pastBids.length - 1].amount : c.ebayPrice || 0
+                const pendingOffer = (c.ebayOffers || []).find(o => o.status === 'pending' && o.arrivedAt <= Date.now() && o.expiresAt > Date.now())
                 return (
-                  <ListingRow key={c.cid}>
+                  <div key={c.cid} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <ListingRow>
                     <img src={c.imageUrl} alt={c.playerName} style={{ width: '50px', height: '70px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '13px', fontWeight: 700, color: '#111', marginBottom: '2px' }}>{c.playerName}</div>
@@ -264,7 +328,9 @@ export default function EbayApp() {
                         </div>
                       )}
                       {c.ebayFormat === 'bin' && (
-                        <div style={{ marginTop: '3px', fontSize: '10px', color: '#888' }}>Fixed price · waiting for buyer</div>
+                        <div style={{ marginTop: '3px', fontSize: '10px', color: c.ebayBestOffer ? '#3665F3' : '#888', fontWeight: c.ebayBestOffer ? 600 : 400 }}>
+                          {c.ebayBestOffer ? 'Fixed price · Best Offer on' : 'Fixed price · waiting for buyer'}
+                        </div>
                       )}
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -272,6 +338,16 @@ export default function EbayApp() {
                       <div style={{ fontSize: '9px', color: '#888' }}>{c.ebayFormat === 'bin' ? 'BIN price' : 'Current bid'}</div>
                     </div>
                   </ListingRow>
+                  {pendingOffer && (
+                    <BestOfferPanel
+                      offer={pendingOffer}
+                      listPrice={c.ebayPrice || 0}
+                      onAccept={() => acceptOffer(c, pendingOffer)}
+                      onDecline={() => declineOffer(c, pendingOffer)}
+                      onCounter={(p) => counterOffer(c, pendingOffer, p)}
+                    />
+                  )}
+                  </div>
                 )
               })}
             </Section>
@@ -500,6 +576,24 @@ export default function EbayApp() {
                   </div>
                 </div>
 
+                {fmt === 'bin' && (
+                  <button onClick={() => setBestOffer(v => !v)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      background: '#fff', border: `2px solid ${bestOffer ? '#3665F3' : '#e5e7eb'}`,
+                      borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', textAlign: 'left',
+                      transition: 'border-color 0.15s',
+                    }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#111', marginBottom: '2px' }}>Accept Best Offers</div>
+                      <div style={{ fontSize: '11px', color: '#888' }}>Buyers can send offers below your price — you Accept, Counter, or Decline</div>
+                    </div>
+                    <div style={{ width: '44px', height: '26px', borderRadius: '99px', background: bestOffer ? '#3665F3' : '#d1d5db', flexShrink: 0, position: 'relative', transition: 'background 0.2s', marginLeft: '12px' }}>
+                      <div style={{ position: 'absolute', top: '3px', left: bestOffer ? '21px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                    </div>
+                  </button>
+                )}
+
                 <div style={{ background: '#fff3cd', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: '#856404', border: '1px solid #ffc10740' }}>
                   Market value: <strong>${listCard.actualEbayPrice.toFixed(2)}</strong>
                   {fmt === 'auction' && ' · Start low to attract more bidders'}
@@ -563,23 +657,24 @@ export default function EbayApp() {
                 <StepLabel>Review your listing</StepLabel>
 
                 <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-                  {[
+                  {(([
                     { label: 'Format',   val: fmt === 'auction' ? 'Auction' : 'Buy It Now' },
+                    ...(fmt === 'bin' && bestOffer ? [{ label: 'Best Offers', val: 'Enabled', color: '#3665F3' }] : []),
                     { label: 'Price',    val: `$${(price || 0).toFixed(2)}` },
                     { label: 'Shipping', val: ship ? (ship.cost === 0 ? 'Free' : `$${ship.cost.toFixed(2)}`) : '—' },
                     { label: 'Duration', val: dur?.label || '—' },
                     { label: 'eBay Fee (13%)', val: `-$${fee.toFixed(2)}`, color: '#E53238' },
                     { label: 'You receive', val: `$${payout.toFixed(2)}`, color: payout > 0 ? '#16a34a' : '#E53238', bold: true },
-                  ].map((row, i) => (
+                  ] as { label: string; val: string; color?: string; bold?: boolean }[]).map((row, i, arr) => (
                     <div key={i} style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       padding: '12px 16px',
-                      borderBottom: i < 5 ? '1px solid #f3f4f6' : 'none',
+                      borderBottom: i < arr.length - 1 ? '1px solid #f3f4f6' : 'none',
                     }}>
                       <span style={{ fontSize: '13px', color: '#666' }}>{row.label}</span>
                       <span style={{ fontSize: row.bold ? '17px' : '14px', fontWeight: row.bold ? 800 : 600, color: row.color || '#111', fontFamily: row.bold ? BC : 'inherit' }}>{row.val}</span>
                     </div>
-                  ))}
+                  )))}
                 </div>
 
                 {payout <= 0 && (
@@ -645,4 +740,57 @@ function ListingRow({ children, tint }: { children: React.ReactNode; tint?: stri
 
 function StepLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: '16px', fontWeight: 700, color: '#111', marginBottom: '4px' }}>{children}</div>
+}
+
+const boBtn = (bg: string, color: string, border: string): React.CSSProperties => ({
+  flex: 1, padding: '10px', borderRadius: '10px', border: border, background: bg, color,
+  fontSize: '13px', fontWeight: 700, fontFamily: BC, cursor: 'pointer',
+})
+
+function BestOfferPanel({ offer, listPrice, onAccept, onDecline, onCounter }: {
+  offer: EbayOffer; listPrice: number
+  onAccept: () => void; onDecline: () => void; onCounter: (price: number) => void
+}) {
+  const [mode, setMode] = useState<'menu' | 'counter'>('menu')
+  const [counterVal, setCounterVal] = useState(() => Math.round((offer.amount + listPrice) / 2))
+  const pctOfAsk = listPrice > 0 ? Math.round((offer.amount / listPrice) * 100) : 0
+  const counterBad = counterVal <= offer.amount || counterVal > listPrice
+
+  return (
+    <div style={{ background: '#fff', border: '1.5px solid #3665F3', borderRadius: '14px', padding: '12px 14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+        <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#eef2ff', color: '#3665F3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '13px', fontFamily: BC, flexShrink: 0 }}>
+          {offer.user[0].toUpperCase()}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{offer.user}</div>
+          <div style={{ fontSize: '10px', color: '#888' }}>sent an offer · {pctOfAsk}% of ask</div>
+        </div>
+        <div style={{ fontFamily: BC, fontSize: '20px', fontWeight: 800, color: '#3665F3', flexShrink: 0 }}>${offer.amount.toFixed(2)}</div>
+      </div>
+
+      {mode === 'menu' ? (
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={onAccept} style={boBtn('#3665F3', '#fff', 'none')}>Accept</button>
+          <button onClick={() => setMode('counter')} style={boBtn('#fff', '#3665F3', '1.5px solid #3665F3')}>Counter</button>
+          <button onClick={onDecline} style={boBtn('#fff', '#666', '1.5px solid #e5e7eb')}>Decline</button>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', marginBottom: '6px' }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', border: '1.5px solid #e5e7eb', borderRadius: '10px', padding: '8px 12px' }}>
+              <span style={{ color: '#888', fontFamily: BC, fontWeight: 700 }}>$</span>
+              <input type="number" value={counterVal} min={offer.amount + 1} max={listPrice}
+                onChange={e => setCounterVal(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+                style={{ flex: 1, border: 'none', outline: 'none', fontFamily: BC, fontSize: '17px', fontWeight: 800, color: '#111', marginLeft: '4px', width: '100%' }} />
+            </div>
+            <button disabled={counterBad} onClick={() => onCounter(counterVal)}
+              style={{ ...boBtn('#3665F3', '#fff', 'none'), flex: 'none', padding: '10px 18px', opacity: counterBad ? 0.5 : 1, cursor: counterBad ? 'default' : 'pointer' }}>Send</button>
+          </div>
+          <div style={{ fontSize: '10px', color: '#888', marginBottom: '8px' }}>Counter above ${offer.amount.toFixed(2)} and up to your ask ${listPrice.toFixed(2)}.</div>
+          <button onClick={() => setMode('menu')} style={boBtn('#fff', '#666', '1.5px solid #e5e7eb')}>Cancel</button>
+        </div>
+      )}
+    </div>
+  )
 }

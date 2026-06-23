@@ -30,6 +30,18 @@ export interface Card {
   ebayFeeAmt?: number
   auctionCleared?: boolean
   bidEvents?: BidEvent[]
+  ebayBestOffer?: boolean
+  ebayOffers?: EbayOffer[]
+}
+
+export interface EbayOffer {
+  id: string
+  user: string
+  amount: number          // buyer's offer (below the BIN ask)
+  message?: string
+  arrivedAt: number
+  expiresAt: number
+  status: 'pending' | 'accepted' | 'declined' | 'expired'
 }
 
 export interface BidEvent {

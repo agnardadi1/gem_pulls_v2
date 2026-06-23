@@ -1,6 +1,32 @@
-import type { Card, EbayRep } from '../../types'
+import type { Card, EbayRep, EbayOffer } from '../../types'
 
 const EBAY_FEE = 0.13
+
+// ─── Best Offer (BIN listings) ───
+const OFFER_BUYERS = ['bargain_hunter88', 'lowball_lenny', 'deal_seeker_22', 'pennywise_pat', 'thrifty_collector', 'offerup_otis']
+
+// A buyer sends an offer below your BIN price. Most lowball; a few are close.
+export function makeEbayOffer(listPrice: number, now: number): EbayOffer {
+  const pct = 0.72 + Math.random() * 0.18 // 72%–90% of ask
+  const amount = Math.round(listPrice * pct * 100) / 100
+  return {
+    id: `bo-${now}-${Math.random().toString(36).slice(2, 7)}`,
+    user: OFFER_BUYERS[Math.floor(Math.random() * OFFER_BUYERS.length)],
+    amount,
+    arrivedAt: now,
+    expiresAt: now + (2 + Math.random() * 2) * 60 * 1000, // 2–4 min to respond
+    status: 'pending',
+  }
+}
+
+// Will the buyer take your counter? They'll stretch a little above their own
+// offer (capped at your ask). Lower counters are likelier to land.
+export function counterAccepted(offer: EbayOffer, listPrice: number, counter: number): boolean {
+  if (counter <= offer.amount) return true
+  if (counter > listPrice) return false
+  const buyerMax = Math.min(listPrice, offer.amount * (1.06 + Math.random() * 0.14))
+  return counter <= buyerMax
+}
 
 const BIDDERS = [
   { id: 'flipper',   name: 'flipperking_cards',  maxPct: 0.55 },
