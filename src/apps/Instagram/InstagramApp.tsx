@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { usePhoneStore } from '../../store/usePhoneStore'
 import { useGameStore } from '../../store/useGameStore'
 import { useNotificationStore } from '../../store/useNotificationStore'
-import { genIgOffers, sellerRespond } from './igLogic'
+import { genIgOffers, sellerRespond, followUpForUser, makeUnsolicitedOffer } from './igLogic'
 import { RARITY_META, CARDS } from '../PackMarket/packData'
 import type { Card, IgOffer } from '../../types'
 import type { Rarity } from '../PackMarket/packData'
@@ -175,7 +175,44 @@ export default function InstagramApp() {
   const [counterResult, setCounterResult] = useState<{ offerId: string; price: number; accepted: boolean } | null>(null)
 
   useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 2000)
+    const id = setInterval(() => {
+      setTick(t => t + 1)
+      const now = Date.now()
+      const { collection: coll, updateCard: upd } = useGameStore.getState()
+      const push = useNotificationStore.getState().push
+
+      // 1) Buyers nudge you if you let a pending offer sit unanswered.
+      coll.forEach(card => {
+        if (card.sold) return
+        const offers = card.igOffers
+        if (!offers || !offers.length) return
+        let changed = false
+        const next = offers.map(o => {
+          if (o.status !== 'pending' || o.arrivedAt > now || o.expiresAt <= now) return o
+          const frac = (now - o.arrivedAt) / (o.expiresAt - o.arrivedAt)
+          const want = frac > 0.75 ? 2 : frac > 0.4 ? 1 : 0
+          const have = o.followUps?.length ?? 0
+          if (want <= have) return o
+          const adds: { text: string; at: number }[] = []
+          for (let k = have; k < want; k++) adds.push({ text: followUpForUser(o.user), at: now })
+          changed = true
+          return { ...o, followUps: [...(o.followUps || []), ...adds] }
+        })
+        if (changed) upd(card.cid, { igOffers: next })
+      })
+
+      // 2) Occasionally a buyer DMs about a card you never even listed.
+      const pendingUns = coll.filter(c => !c.sold && (c.igOffers || []).some(o => o.unsolicited && o.status === 'pending' && o.expiresAt > now)).length
+      if (pendingUns < 2 && Math.random() < 0.04) {
+        const candidates = coll.filter(c => !c.sold && !c.listed && !c.igPostedAt && !(c.igOffers && c.igOffers.length))
+        if (candidates.length) {
+          const card = candidates[Math.floor(Math.random() * candidates.length)]
+          const offer = makeUnsolicitedOffer(card, now)
+          upd(card.cid, { igOffers: [offer] })
+          push('instagram', 'New DM', `@${offer.user} wants to buy your ${card.playerName}`)
+        }
+      }
+    }, 2000)
     return () => clearInterval(id)
   }, [])
 
@@ -190,7 +227,10 @@ export default function InstagramApp() {
   }
   const allConversations = useMemo(() => {
     const list: { offer: IgOffer; card: Card }[] = []
-    igPosts.forEach(card => visibleOffers(card).forEach(offer => list.push({ offer, card })))
+    // Posted cards AND any card with an unsolicited DM you never listed.
+    collection
+      .filter(c => !c.sold && c.igOffers && c.igOffers.length > 0)
+      .forEach(card => visibleOffers(card).forEach(offer => list.push({ offer, card })))
     return list.sort((a, b) => {
       const ap = a.offer.status === 'pending' && a.offer.expiresAt > Date.now() ? 0 : 1
       const bp = b.offer.status === 'pending' && b.offer.expiresAt > Date.now() ? 0 : 1
@@ -623,7 +663,7 @@ export default function InstagramApp() {
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {/* shared post bubble */}
           <div style={{ alignSelf: 'flex-start', maxWidth: '78%' }}>
-            <div style={{ fontSize: '11px', color: '#8e8e8e', marginBottom: '4px', paddingLeft: '4px' }}>shared your post</div>
+            <div style={{ fontSize: '11px', color: '#8e8e8e', marginBottom: '4px', paddingLeft: '4px' }}>{offer.unsolicited ? 'noticed your card' : 'shared your post'}</div>
             <div style={{ border: '1px solid #efefef', borderRadius: '16px', overflow: 'hidden', background: '#fafafa' }}>
               <div style={{ height: '150px', background: '#f3f4f6' }}>
                 {card.imageUrl && <img src={card.imageUrl} alt={card.playerName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
@@ -707,6 +747,15 @@ export default function InstagramApp() {
                     </div>
                   </div>
                 )}
+
+                {/* follow-up nudges if you left them waiting */}
+                {offer.followUps && offer.followUps.map((f, fi) => (
+                  <div key={fi} style={{ marginTop: '8px', display: 'flex' }}>
+                    <div style={{ background: '#efefef', color: '#000', borderRadius: '18px 18px 18px 4px', padding: '9px 13px', fontSize: '14px', lineHeight: 1.35, maxWidth: '85%' }}>
+                      {f.text}
+                    </div>
+                  </div>
+                ))}
 
                 {/* counter result bubble */}
                 {myCounter && (
@@ -919,6 +968,12 @@ function Feed({ posts, liked, onLike, profile, verified, postMenu, setPostMenu, 
                 <button onClick={() => onOpenOffers(card)} style={{ position: 'absolute', top: '12px', right: '12px', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: '99px', padding: '6px 12px', color: '#fff', fontSize: '12px', fontWeight: 700, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#3897f0' }} />{offerCount} offer{offerCount !== 1 ? 's' : ''}
                 </button>
+              )}
+              {offerCount >= 2 && (
+                <div style={{ position: 'absolute', top: '12px', left: '12px', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: '99px', padding: '5px 10px' }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="#ff6a1f"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+                  <span style={{ color: '#fff', fontSize: '11px', fontWeight: 800, letterSpacing: '0.3px' }}>Hot</span>
+                </div>
               )}
             </div>
 

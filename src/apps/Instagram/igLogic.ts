@@ -9,6 +9,9 @@ const PERSONAS = [
   { user: 'GrailHunter_IG',   avatar: '#00AC4E', style: 'grail' },
   { user: 'pcards_daily',     avatar: '#FB923C', style: 'fair' },
   { user: 'wax_wizard',       avatar: '#06b6d4', style: 'trader' },
+  { user: 'quickflip_cody',   avatar: '#ec4899', style: 'flipper' },
+  { user: 'sameday_sales',    avatar: '#14b8a6', style: 'flipper' },
+  { user: 'lowball_larry',    avatar: '#f59e0b', style: 'lowball' },
 ]
 
 // Map rarity from packData to Card rarity type
@@ -53,6 +56,22 @@ const MESSAGES = {
     "been searching everywhere. offering top $",
     "this completes my collection. serious offer 🙌",
   ],
+  flipper: [
+    "can pay instantly, trying to flip it this week ⚡",
+    "quick cash offer — can send right now if we agree",
+    "doing a show this weekend, need it fast. deal?",
+    "ready to buy today, no lowball games 🤝",
+  ],
+}
+
+// Nudges sent if you leave a pending offer sitting too long.
+const FOLLOWUPS: Record<string, string[]> = {
+  lowball:   ["you still got this?", "offer still stands if you wanna move it 👀", "lmk, I can go a hair higher maybe"],
+  fair:      ["still available? would love to lock it in", "any update on this one? 🙏", "hope you'll consider my offer!"],
+  collector: ["please don't sell it out from under me 🙏", "still hoping to land this for my PC", "my offer's still good whenever you're ready"],
+  trader:    ["my trade's still on the table 👀", "lmk if you wanna work something out", "can add a little more to sweeten it"],
+  grail:     ["I'm serious about this one, still here 🏆", "name your number, I'll make it work", "still my #1 want — let's talk"],
+  flipper:   ["cash is ready, just say the word ⚡", "still wanna grab this today if it's open", "tick tock — got a buyer lined up 😅"],
 }
 
 function randInt(min: number, max: number) {
@@ -86,9 +105,11 @@ export function genIgOffers(card: Card, postedAt: number): IgOffer[] {
     const arrivedAt = now + arriveDelay
     const expiresAt = arrivedAt + randInt(10, 20) * 60 * 1000 // 10–20 min to respond
 
-    const isTrade = (persona.style === 'trader' || persona.style === 'grail')
-      ? Math.random() < 0.78
-      : Math.random() < 0.42
+    const tradeChance = persona.style === 'trader' ? 0.78
+      : persona.style === 'grail' ? 0.70
+      : persona.style === 'flipper' ? 0.12   // flippers want quick cash, rarely trade
+      : 0.42
+    const isTrade = Math.random() < tradeChance
 
     if (isTrade) {
       // Only trade cards whose value is within 50%–160% of market — no fallback to random
@@ -139,6 +160,7 @@ export function genIgOffers(card: Card, postedAt: number): IgOffer[] {
       collector: 0.85 + Math.random() * 0.15,
       grail:     1.0  + Math.random() * 0.25,
       trader:    0.70 + Math.random() * 0.15,
+      flipper:   0.60 + Math.random() * 0.15,  // quick cash, leaves room to flip
     }
     const pct = pctMap[persona.style] ?? 0.75
     const amount = Math.round(mkt * pct * 100) / 100
@@ -212,4 +234,41 @@ export function sellerRespond(opts: {
   // Counter somewhere between their floor and the asking price
   const counter = Math.round(Math.min(asking, (offerValue + floor) / 2 + asking * 0.04) * 100) / 100
   return { action: 'counter', counter, message: `Can't quite do that. I'll let it go for $${counter.toFixed(2)}.` }
+}
+
+// ─── Follow-up nudges + unsolicited DMs ───
+
+const STYLE_BY_USER: Record<string, string> = Object.fromEntries(PERSONAS.map(p => [p.user, p.style]))
+
+// A nudge in the tone of whoever made the offer, used when you leave it sitting.
+export function followUpForUser(user: string): string {
+  return pick(FOLLOWUPS[STYLE_BY_USER[user] ?? 'fair'] ?? FOLLOWUPS.fair)
+}
+
+const UNSOLICITED_MSGS = [
+  "saw you pulled the {name} — not even listed but I'd buy it right now 👀",
+  "a buddy showed me your {name}. serious cash offer if you'll let it go",
+  "long shot, but would you sell the {name}? cash ready 🤝",
+  "I know it's not posted but I had to ask about the {name}…",
+]
+
+// An out-of-the-blue cash offer on a card you never listed. Buyers are keen,
+// so the number runs a touch above a typical money offer.
+export function makeUnsolicitedOffer(card: Card, now: number): IgOffer {
+  const buyers = PERSONAS.filter(p => p.style !== 'trader')
+  const persona = pick(buyers)
+  const pct = 0.82 + Math.random() * 0.26 // 82–108% of market
+  const amount = Math.round(card.actualEbayPrice * pct * 100) / 100
+  return {
+    id: `uns-${card.cid}-${now}`,
+    user: persona.user,
+    avatar: persona.avatar,
+    type: 'money',
+    amount,
+    message: pick(UNSOLICITED_MSGS).replace('{name}', card.playerName),
+    arrivedAt: now,
+    expiresAt: now + randInt(8, 15) * 60 * 1000,
+    status: 'pending',
+    unsolicited: true,
+  }
 }

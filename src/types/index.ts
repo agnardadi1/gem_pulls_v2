@@ -57,6 +57,8 @@ export interface IgOffer {
   arrivedAt: number
   expiresAt: number
   status: 'pending' | 'accepted' | 'declined' | 'expired'
+  unsolicited?: boolean              // DM about a card you never listed
+  followUps?: { text: string; at: number }[] // nudges if you ignore them
 }
 
 export interface EbayRep {
