@@ -7,10 +7,10 @@ interface Props {
 }
 
 const BADGES: Record<string, { label: string; bg: string; text: string }> = {
-  budget:   { label: 'BEST START', bg: '#16a34a', text: '#fff' },
-  standard: { label: 'BEST VALUE', bg: '#2563eb', text: '#fff' },
-  premium:  { label: 'PREMIUM',    bg: '#7c3aed', text: '#fff' },
-  chase:    { label: 'CHASE',      bg: '#ca8a04', text: '#000' },
+  budget:   { label: 'LOW RISK',   bg: '#16a34a', text: '#fff' },
+  standard: { label: 'POPULAR',    bg: '#2563eb', text: '#fff' },
+  premium:  { label: 'HIGH ROLLER', bg: '#7c3aed', text: '#fff' },
+  chase:    { label: 'JACKPOT',    bg: '#ca8a04', text: '#000' },
 }
 
 export default function PackStore({ onSelect }: Props) {

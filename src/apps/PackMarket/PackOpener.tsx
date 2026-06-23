@@ -132,12 +132,8 @@ export default function PackOpener({ pack, onDone }: Props) {
   }
 
   function openAll(allCards: RealCard[]) {
-    setAutoMode(true)
-    setIdx(0)
-    setOverlayY(0)
-    setRevealed(false)
-    setShowInfo(false)
-    runAutoSequence(allCards, 0)
+    allCards.forEach((c, i) => saveCard(c, i))
+    setPhase('summary')
   }
 
   // ── Summary ──

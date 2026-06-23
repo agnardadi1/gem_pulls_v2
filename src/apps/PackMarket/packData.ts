@@ -85,6 +85,12 @@ export interface PackType {
 }
 
 export const PACK_TYPES: PackType[] = [
+  // ── Pack economy ──
+  // Every pack is priced at roughly break-even vs. its expected card value
+  // (market price), so there is no free money printer. The edge comes from
+  // selling above the mean (Instagram / eBay reputation) and from variance.
+  // Variance rises with price: cheap packs are a safe grind, expensive packs
+  // are chase-or-bust gambles.
   {
     id: 'single',
     name: 'Blind Slab',
@@ -94,51 +100,56 @@ export const PACK_TYPES: PackType[] = [
     image: '/pack-single.png',
     color: ['#0f172a', '#1e293b'],
     accent: '#94a3b8',
-    odds: { common: 92, uncommon: 8, rare: 0, chase: 0 },
+    // EV ≈ $59 — the deliberate soft floor: grind it to tread water.
+    odds: { common: 100, uncommon: 0, rare: 0, chase: 0 },
   },
   {
     id: 'budget',
     name: 'Blaster Box',
-    subtitle: '3 cards · No rares',
-    price: 100,
+    subtitle: '3 cards · Low risk',
+    price: 240,
     cardCount: 3,
     image: '/pack-budget.png',
     color: ['#1e3a5f', '#1e40af'],
     accent: '#60a5fa',
-    odds: { common: 75, uncommon: 25, rare: 0, chase: 0 },
+    // EV ≈ $253 — low variance, capped at uncommon.
+    odds: { common: 80, uncommon: 20, rare: 0, chase: 0 },
   },
   {
     id: 'standard',
     name: 'Hobby Box',
     subtitle: '5 cards · Rares unlocked',
-    price: 500,
+    price: 950,
     cardCount: 5,
     image: '/pack-standard.png',
     color: ['#431407', '#b45309'],
     accent: '#fbbf24',
-    odds: { common: 60, uncommon: 25, rare: 15, chase: 0 },
+    // EV ≈ $992 — ~40% of boxes hit a rare and profit; the rest take a loss.
+    odds: { common: 64, uncommon: 26, rare: 10, chase: 0 },
   },
   {
     id: 'premium',
     name: 'Super Box',
-    subtitle: '8 cards · Premium rares',
-    price: 2500,
+    subtitle: '8 cards · Chase shot',
+    price: 2650,
     cardCount: 8,
     image: '/pack-premium.png',
     color: ['#2e1065', '#6d28d9'],
     accent: '#c084fc',
-    odds: { common: 45, uncommon: 30, rare: 25, chase: 0 },
+    // EV ≈ $2,788 — multiple rares likely, small chase tail (~8% per box).
+    odds: { common: 50, uncommon: 33, rare: 16, chase: 1 },
   },
   {
     id: 'chase',
     name: 'Chase Pack',
-    subtitle: '2 cards · Chase possible',
+    subtitle: '2 cards · Chase or bust',
     price: 3500,
     cardCount: 2,
     image: '/pack-chase.png',
     color: ['#0a0a0a', '#18181b'],
     accent: '#ffd700',
-    odds: { common: 10, uncommon: 25, rare: 50, chase: 15 },
+    // EV ≈ $3,684 — chase-or-bust: ~28% of packs hit a chase, the rest lose big.
+    odds: { common: 0, uncommon: 30, rare: 55, chase: 15 },
   },
 ]
 
