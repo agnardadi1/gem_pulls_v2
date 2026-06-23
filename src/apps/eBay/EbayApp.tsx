@@ -11,7 +11,7 @@ type View = 'listings' | 'pick-card' | 'listing-flow' | 'profile'
 const BC = "'Barlow Condensed', sans-serif"
 
 export default function EbayApp() {
-  const { closeApp } = usePhoneStore()
+  const { closeApp, listIntent, clearListIntent } = usePhoneStore()
   const { collection, ebayRep, updateCard, addEarnings } = useGameStore()
   const pushNotif = useNotificationStore(s => s.push)
   const [view, setView] = useState<View>('listings')
@@ -65,6 +65,18 @@ export default function EbayApp() {
   // On mount: resume any pending auctions (eBay listings only — never Instagram posts)
   useEffect(() => {
     collection.filter(c => c.platform === 'ebay' && c.listed && !c.sold).forEach(c => schedCard(c))
+  }, [])
+
+  // On mount: if the Binder asked us to list a specific card, jump into the flow.
+  const intentDone = useRef(false)
+  useEffect(() => {
+    if (intentDone.current) return
+    if (listIntent && listIntent.platform === 'ebay') {
+      intentDone.current = true
+      const card = useGameStore.getState().collection.find(c => c.cid === listIntent.cid && !c.sold && !c.listed)
+      clearListIntent()
+      if (card) startListing(card)
+    }
   }, [])
 
   function schedCard(c: Card) {
