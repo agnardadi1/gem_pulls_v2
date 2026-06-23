@@ -1,12 +1,10 @@
 import { useGameStore } from '../store/useGameStore'
 import { useNotificationStore } from '../store/useNotificationStore'
-import { followUpForUser, makeUnsolicitedOffer } from '../apps/Instagram/igLogic'
+import { followUpForUser } from '../apps/Instagram/igLogic'
 import { makeEbayOffer } from '../apps/eBay/ebayLogic'
 import { isUnlocked } from './appUnlocks'
 
-// Per-tick probabilities (the world ticks every ~3s from Phone). Tuned so the
-// arrival rate roughly matches the old per-app cadence.
-const IG_UNSOLICITED_CHANCE = 0.06   // capped at 2 pending at a time
+// Per-tick probability (the world ticks every ~3s from Phone).
 const EBAY_OFFER_CHANCE = 0.045      // per eligible Best Offer listing
 
 // Advances the "world" — buyer DMs and eBay offers — on a global cadence so
@@ -41,18 +39,6 @@ export function runWorldTick() {
     })
     if (changed) updateCard(card.cid, { igOffers: next })
   })
-
-  // ── Instagram: an out-of-the-blue DM about a card you never listed ──
-  const pendingUns = collection.filter(c => !c.sold && (c.igOffers || []).some(o => o.unsolicited && o.status === 'pending' && o.expiresAt > now)).length
-  if (igOpen && pendingUns < 2 && Math.random() < IG_UNSOLICITED_CHANCE) {
-    const candidates = collection.filter(c => !c.sold && !c.listed && !c.igPostedAt && !(c.igOffers && c.igOffers.length))
-    if (candidates.length) {
-      const card = candidates[Math.floor(Math.random() * candidates.length)]
-      const offer = makeUnsolicitedOffer(card, now)
-      updateCard(card.cid, { igOffers: [offer] })
-      push('instagram', 'New DM', `@${offer.user} wants to buy your ${card.playerName}`)
-    }
-  }
 
   // ── eBay: expire stale Best Offers, occasionally surface a new one ──
   if (ebayOpen) collection.forEach(c => {

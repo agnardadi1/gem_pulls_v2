@@ -245,30 +245,3 @@ export function followUpForUser(user: string): string {
   return pick(FOLLOWUPS[STYLE_BY_USER[user] ?? 'fair'] ?? FOLLOWUPS.fair)
 }
 
-const UNSOLICITED_MSGS = [
-  "saw you pulled the {name} — not even listed but I'd buy it right now 👀",
-  "a buddy showed me your {name}. serious cash offer if you'll let it go",
-  "long shot, but would you sell the {name}? cash ready 🤝",
-  "I know it's not posted but I had to ask about the {name}…",
-]
-
-// An out-of-the-blue cash offer on a card you never listed. Buyers are keen,
-// so the number runs a touch above a typical money offer.
-export function makeUnsolicitedOffer(card: Card, now: number): IgOffer {
-  const buyers = PERSONAS.filter(p => p.style !== 'trader')
-  const persona = pick(buyers)
-  const pct = 0.82 + Math.random() * 0.26 // 82–108% of market
-  const amount = Math.round(card.actualEbayPrice * pct * 100) / 100
-  return {
-    id: `uns-${card.cid}-${now}`,
-    user: persona.user,
-    avatar: persona.avatar,
-    type: 'money',
-    amount,
-    message: pick(UNSOLICITED_MSGS).replace('{name}', card.playerName),
-    arrivedAt: now,
-    expiresAt: now + randInt(8, 15) * 60 * 1000,
-    status: 'pending',
-    unsolicited: true,
-  }
-}
