@@ -19,15 +19,10 @@ export default function PackOpener({ pack, onDone }: Props) {
   const [overlayY, setOverlayY] = useState(0)
   const [showInfo, setShowInfo] = useState(false)
   const [phase, setPhase] = useState<'opening' | 'summary'>('opening')
-  const [autoMode, setAutoMode] = useState(false)
-  const [snapOverlay, setSnapOverlay] = useState(false) // disable transition when resetting overlay
   const initRef = useRef(false)
   const dragRef = useRef({ on: false, startY: 0, dy: 0 })
   const isTransitioning = useRef(false)
   const savedIndices = useRef<Set<number>>(new Set())
-  const autoTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-
-  useEffect(() => () => clearTimeout(autoTimer.current), [])
 
   useEffect(() => {
     if (initRef.current) return
@@ -41,7 +36,7 @@ export default function PackOpener({ pack, onDone }: Props) {
   const meta = card ? RARITY_META[card.rarity] : RARITY_META.common
 
   function onPointerDown(e: React.PointerEvent) {
-    if (revealed || !card || isTransitioning.current || autoMode) return
+    if (revealed || !card || isTransitioning.current) return
     dragRef.current = { on: true, startY: e.clientY, dy: 0 }
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
@@ -104,34 +99,7 @@ export default function PackOpener({ pack, onDone }: Props) {
     })
   }
 
-  function runAutoSequence(allCards: RealCard[], i: number) {
-    // 1. Briefly show card back (already at overlayY=0), then slide reveal
-    autoTimer.current = setTimeout(() => {
-      setOverlayY(CARD_H)
-      setRevealed(true)
-      saveCard(allCards[i], i)
-
-      // 2. Let player see the card
-      autoTimer.current = setTimeout(() => {
-        if (i + 1 < allCards.length) {
-          // 3. Snap overlay to top instantly (no animation) then show next card
-          setSnapOverlay(true)
-          setOverlayY(0)
-          setRevealed(false)
-          setIdx(i + 1)
-          // Re-enable transition after snap renders, then start reveal
-          autoTimer.current = setTimeout(() => {
-            setSnapOverlay(false)
-            autoTimer.current = setTimeout(() => runAutoSequence(allCards, i + 1), 30)
-          }, 60)
-        } else {
-          setPhase('summary')
-        }
-      }, 950)
-    }, 420)
-  }
-
-  function openAll(allCards: RealCard[]) {
+function openAll(allCards: RealCard[]) {
     allCards.forEach((c, i) => saveCard(c, i))
     setPhase('summary')
   }
@@ -308,7 +276,7 @@ export default function PackOpener({ pack, onDone }: Props) {
         <div style={{
           position: 'absolute', inset: 0, zIndex: 10,
           transform: `translateY(${overlayY}px)`,
-          transition: (dragRef.current.on || snapOverlay) ? 'none' : 'transform 0.3s cubic-bezier(0.22,1,0.36,1)',
+          transition: dragRef.current.on ? 'none' : 'transform 0.3s cubic-bezier(0.22,1,0.36,1)',
           background: 'linear-gradient(160deg, #141428 0%, #0a0a18 100%)',
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px',
           borderRadius: '14px',
@@ -342,7 +310,7 @@ export default function PackOpener({ pack, onDone }: Props) {
       </div>
 
       {/* Open All button — visible before any reveal, hidden once auto mode starts */}
-      {!revealed && !showInfo && !autoMode && cards.length > 1 && (
+      {!revealed && !showInfo && cards.length > 1 && (
         <button
           onClick={() => openAll(cards)}
           style={{
