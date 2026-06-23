@@ -49,6 +49,15 @@ const APP_META: Record<AppId, { name: string; color: string; icon: React.ReactNo
       </svg>
     ),
   },
+  'paypal': {
+    name: 'PayPal', color: '#003087',
+    icon: (
+      <svg viewBox="0 0 28 28" width="20" height="20">
+        <rect width="28" height="28" rx="6" fill="#003087"/>
+        <path d="M18 8c.7 1.2.6 2.6-.2 3.5-.9 1-2.3 1.6-4 1.6h-1.2c-.3 0-.5.2-.6.5l-.6 3.7H9l1.6-10h3.7c1.4 0 2.6.5 3.3 1z" fill="#009cde"/>
+      </svg>
+    ),
+  },
 }
 
 function timeAgo(ts: number) {

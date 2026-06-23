@@ -3,7 +3,6 @@ import { useGameStore } from '../../store/useGameStore'
 import { usePhoneStore } from '../../store/usePhoneStore'
 
 const PP_BLUE = '#003087'
-const PP_LIGHT = '#009cde'
 
 function groupByDay(txs: PayPalTransaction[]) {
   const groups: { label: string; txs: PayPalTransaction[] }[] = []
