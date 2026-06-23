@@ -93,10 +93,11 @@ export const useGameStore = create<GameState>()(
         set((s) => {
           const newBR = s.bankroll + amount
           const newAllEarned = s.stats.allEarned + amount
+          const newRunEarned = s.stats.earned + amount
           const newLevel =
-            newAllEarned >= 100000 ? 4
-            : newAllEarned >= 25000 ? 3
-            : newAllEarned >= 5000 ? 2
+            newRunEarned >= 100000 ? 4
+            : newRunEarned >= 25000 ? 3
+            : newRunEarned >= 5000 ? 2
             : 1
           return {
             bankroll: newBR,

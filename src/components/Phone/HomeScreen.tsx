@@ -105,7 +105,7 @@ export default function HomeScreen() {
 
   const levelName = level >= 4 ? 'Mogul' : level >= 3 ? 'Trader' : level >= 2 ? 'Flipper' : 'Rookie'
   const nextThreshold = level >= 4 ? null : level >= 3 ? 100000 : level >= 2 ? 25000 : 5000
-  const progress = nextThreshold ? Math.min(stats.allEarned / nextThreshold, 1) : 1
+  const progress = nextThreshold ? Math.min(stats.earned / nextThreshold, 1) : 1
 
   return (
     <div className="relative flex flex-col select-none" style={{ height: '844px', paddingTop: '54px' }}>
@@ -156,7 +156,7 @@ export default function HomeScreen() {
             </div>
             <div className="flex justify-between mt-2">
               <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', fontWeight: 600 }}>
-                ${stats.allEarned.toLocaleString('en-US', { maximumFractionDigits: 0 })} earned
+                ${stats.earned.toLocaleString('en-US', { maximumFractionDigits: 0 })} earned
               </span>
               <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>
                 ${nextThreshold.toLocaleString()}
