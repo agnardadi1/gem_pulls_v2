@@ -107,6 +107,9 @@ export default function HomeScreen() {
   const nextThreshold = level >= 4 ? null : level >= 3 ? 100000 : level >= 2 ? 25000 : 5000
   const progress = nextThreshold ? Math.min(stats.earned / nextThreshold, 1) : 1
 
+  // Dev-only buttons (test notif / admin) — set localStorage.dev = 'true' to show.
+  const devMode = typeof localStorage !== 'undefined' && localStorage.getItem('dev') === 'true'
+
   return (
     <div className="relative flex flex-col select-none" style={{ height: '844px', paddingTop: '54px' }}>
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleWallpaperPick} />
@@ -192,24 +195,28 @@ export default function HomeScreen() {
           ))}
         </div>
         <div className="flex justify-center gap-3">
-          <button
-            onClick={() => useNotificationStore.getState().push('ebay', 'Your listing sold!', 'Zion Williamson RC sold for $84.00')}
-            className="text-white/20 text-[11px] border border-white/10 rounded-full px-3 py-1 cursor-pointer"
-          >
-            test notif
-          </button>
+          {devMode && (
+            <button
+              onClick={() => useNotificationStore.getState().push('ebay', 'Your listing sold!', 'Zion Williamson RC sold for $84.00')}
+              className="text-white/20 text-[11px] border border-white/10 rounded-full px-3 py-1 cursor-pointer"
+            >
+              test notif
+            </button>
+          )}
           <button
             onClick={() => { if (window.confirm('Reset to $500?')) resetRun() }}
             className="text-white/20 text-[11px] border border-white/10 rounded-full px-3 py-1 cursor-pointer"
           >
             reset $500
           </button>
-          <button
-            onClick={() => useGameStore.setState({ level: 4, bankroll: 99999 })}
-            className="text-white/20 text-[11px] border border-white/10 rounded-full px-3 py-1 cursor-pointer"
-          >
-            admin
-          </button>
+          {devMode && (
+            <button
+              onClick={() => useGameStore.setState({ level: 4, bankroll: 99999 })}
+              className="text-white/20 text-[11px] border border-white/10 rounded-full px-3 py-1 cursor-pointer"
+            >
+              admin
+            </button>
+          )}
         </div>
       </div>
     </div>
