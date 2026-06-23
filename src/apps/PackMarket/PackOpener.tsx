@@ -5,6 +5,8 @@ import { useGameStore } from '../../store/useGameStore'
 
 const CARD_W = 220
 const CARD_H = 308
+// Commons below this value get flagged as a "DUD" on the summary.
+const DUD_MAX = 20
 
 interface Props {
   pack: PackType
@@ -34,6 +36,9 @@ export default function PackOpener({ pack, onDone }: Props) {
   const card = cards[idx]
   const progress = Math.min(overlayY / CARD_H, 1)
   const meta = card ? RARITY_META[card.rarity] : RARITY_META.common
+  // A warm shimmer teases that something good is behind the back — without
+  // revealing whether it's a rare or a chase.
+  const isHot = !!card && (card.rarity === 'rare' || card.rarity === 'chase')
 
   function onPointerDown(e: React.PointerEvent) {
     if (revealed || !card || isTransitioning.current) return
@@ -175,16 +180,18 @@ function openAll(allCards: RealCard[]) {
           </div>
         )}
 
-        {/* All cards */}
+        {/* All cards — sorted best to worst */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
-          {cards.map((c) => {
+          {[...cards].sort((a, b) => b.actualEbayPrice - a.actualEbayPrice).map((c, i) => {
             const m = RARITY_META[c.rarity]
+            const isDud = c.rarity === 'common' && c.actualEbayPrice < DUD_MAX
             return (
-              <div key={c.id} style={{
+              <div key={`${c.id}-${i}`} style={{
                 display: 'flex', alignItems: 'center', gap: '12px',
                 borderRadius: '13px', padding: '10px 12px',
                 background: 'rgba(255,255,255,0.04)',
                 border: '1px solid rgba(255,255,255,0.06)',
+                opacity: isDud ? 0.6 : 1,
               }}>
                 <img src={c.imageUrl} alt={c.playerName}
                      style={{ width: '36px', height: '50px', borderRadius: '5px', objectFit: 'cover', flexShrink: 0 }} />
@@ -193,7 +200,7 @@ function openAll(allCards: RealCard[]) {
                   <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.variant}</div>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: '10px', fontWeight: 700, color: m.textColor, fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.5px' }}>{m.label.toUpperCase()}</div>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: isDud ? '#6b7280' : m.textColor, fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.5px' }}>{isDud ? 'DUD' : m.label.toUpperCase()}</div>
                   <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '16px', fontWeight: 800, color: 'white' }}>${c.actualEbayPrice.toFixed(2)}</div>
                 </div>
               </div>
@@ -274,23 +281,33 @@ function openAll(allCards: RealCard[]) {
 
         {/* Card back overlay */}
         <div style={{
-          position: 'absolute', inset: 0, zIndex: 10,
+          position: 'absolute', inset: 0, zIndex: 10, overflow: 'hidden',
           transform: `translateY(${overlayY}px)`,
           transition: dragRef.current.on ? 'none' : 'transform 0.3s cubic-bezier(0.22,1,0.36,1)',
           background: 'linear-gradient(160deg, #141428 0%, #0a0a18 100%)',
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px',
           borderRadius: '14px',
-          border: '1px solid rgba(255,255,255,0.07)',
+          border: isHot ? '1px solid rgba(255,198,84,0.5)' : '1px solid rgba(255,255,255,0.07)',
+          boxShadow: isHot ? 'inset 0 0 38px rgba(255,190,70,0.18)' : 'none',
         }}>
+          {/* hot shimmer sweep */}
+          {isHot && (
+            <>
+              <style>{`@keyframes packShimmer { 0% { transform: translateX(-220px) skewX(-12deg) } 55% { transform: translateX(220px) skewX(-12deg) } 100% { transform: translateX(220px) skewX(-12deg) } }`}</style>
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '70px', background: 'linear-gradient(90deg, transparent, rgba(255,221,130,0.28), transparent)', animation: 'packShimmer 1.9s ease-in-out infinite', pointerEvents: 'none' }} />
+            </>
+          )}
           <img src="/logo.png" alt="Gem Pulls" style={{ width: '80px', opacity: 0.75 }} draggable={false} />
-          <div style={{
-            color: 'rgba(255,255,255,0.3)',
-            fontSize: '11px', fontWeight: 700,
-            letterSpacing: '2.5px', textTransform: 'uppercase',
-            fontFamily: "'Barlow Condensed', sans-serif",
-          }}>
-            ↓ drag to reveal
-          </div>
+          {isHot ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ffd782', fontSize: '11px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', fontFamily: "'Barlow Condensed', sans-serif" }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="#ffd782"><path d="M12 2l1.9 5.8H20l-4.9 3.6 1.9 5.8L12 13.6 7 17.2l1.9-5.8L4 7.8h6.1z"/></svg>
+              this one feels special
+            </div>
+          ) : (
+            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', fontWeight: 700, letterSpacing: '2.5px', textTransform: 'uppercase', fontFamily: "'Barlow Condensed', sans-serif" }}>
+              ↓ drag to reveal
+            </div>
+          )}
         </div>
       </div>
 
