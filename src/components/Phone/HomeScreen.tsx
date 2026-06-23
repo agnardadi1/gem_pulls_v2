@@ -3,6 +3,7 @@ import { usePhoneStore } from '../../store/usePhoneStore'
 import { useGameStore } from '../../store/useGameStore'
 import { useNotificationStore } from '../../store/useNotificationStore'
 import NotificationCard from './NotificationCard'
+import { APP_MIN_LEVEL } from '../../game/appUnlocks'
 import type { AppId } from '../../types'
 
 const PackIcon = () => (
@@ -51,18 +52,19 @@ const PayPalIcon = () => (
   </svg>
 )
 
-interface AppDef { id: AppId; label: string; minLevel: number; icon: React.ReactNode }
+interface AppDef { id: AppId; label: string; icon: React.ReactNode }
 
 const APPS: AppDef[] = [
-  { id: 'pack-market', label: 'Pack Market', minLevel: 1, icon: <PackIcon /> },
-  { id: 'ebay',        label: 'eBay',        minLevel: 1, icon: <EbayIcon /> },
-  { id: 'instagram',   label: 'Instagram',   minLevel: 2, icon: <IgIcon /> },
-  { id: 'whatnot',     label: 'Whatnot',     minLevel: 3, icon: <WhatnotIcon /> },
-  { id: 'paypal',      label: 'PayPal',      minLevel: 1, icon: <PayPalIcon /> },
+  { id: 'pack-market', label: 'Pack Market', icon: <PackIcon /> },
+  { id: 'ebay',        label: 'eBay',        icon: <EbayIcon /> },
+  { id: 'instagram',   label: 'Instagram',   icon: <IgIcon /> },
+  { id: 'whatnot',     label: 'Whatnot',     icon: <WhatnotIcon /> },
+  { id: 'paypal',      label: 'PayPal',      icon: <PayPalIcon /> },
 ]
 
 function AppIcon({ app, level, onTap }: { app: AppDef; level: number; onTap: () => void }) {
-  const locked = level < app.minLevel
+  const minLevel = APP_MIN_LEVEL[app.id]
+  const locked = level < minLevel
   return (
     <button
       onClick={() => !locked && onTap()}
@@ -82,7 +84,7 @@ function AppIcon({ app, level, onTap }: { app: AppDef; level: number; onTap: () 
       </div>
       <span className="text-[12px] font-medium text-center leading-tight"
             style={{ color: locked ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.9)', textShadow: '0 1px 5px rgba(0,0,0,0.9)' }}>
-        {locked ? `Lvl ${app.minLevel}` : app.label}
+        {locked ? `Lvl ${minLevel}` : app.label}
       </span>
     </button>
   )

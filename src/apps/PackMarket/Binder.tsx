@@ -3,6 +3,7 @@ import { useGameStore } from '../../store/useGameStore'
 import { usePhoneStore } from '../../store/usePhoneStore'
 import { useNotificationStore } from '../../store/useNotificationStore'
 import { genIgOffers } from '../Instagram/igLogic'
+import { isUnlocked } from '../../game/appUnlocks'
 import { RARITY_META } from './packData'
 import type { Card } from '../../types'
 
@@ -29,11 +30,12 @@ function fmtDate(ts: number) {
 }
 
 export default function Binder() {
-  const { collection, updateCard } = useGameStore()
+  const { collection, updateCard, level } = useGameStore()
   const requestList = usePhoneStore(s => s.requestList)
   const pushNotif = useNotificationStore(s => s.push)
   const [sort, setSort] = useState<SortMode>('value')
   const [detailCid, setDetailCid] = useState<string | null>(null)
+  const igUnlocked = isUnlocked('instagram', level)
 
   if (collection.length === 0) {
     return (
@@ -212,7 +214,9 @@ export default function Binder() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button onClick={() => listOnEbay(detail)} style={sheetBtn('#3665F3', '#fff')}>List on eBay</button>
-                  <button onClick={() => listOnInstagram(detail)} style={sheetBtn('linear-gradient(45deg,#feda75,#d62976 55%,#4f5bd5)', '#fff')}>List on Instagram</button>
+                  {igUnlocked && (
+                    <button onClick={() => listOnInstagram(detail)} style={sheetBtn('linear-gradient(45deg,#feda75,#d62976 55%,#4f5bd5)', '#fff')}>List on Instagram</button>
+                  )}
                 </div>
                 <button onClick={() => setDetailCid(null)} style={sheetBtn('rgba(255,255,255,0.08)', 'rgba(255,255,255,0.7)')}>Hold</button>
               </div>

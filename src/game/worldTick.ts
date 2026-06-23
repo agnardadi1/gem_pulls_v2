@@ -2,6 +2,7 @@ import { useGameStore } from '../store/useGameStore'
 import { useNotificationStore } from '../store/useNotificationStore'
 import { followUpForUser, makeUnsolicitedOffer } from '../apps/Instagram/igLogic'
 import { makeEbayOffer } from '../apps/eBay/ebayLogic'
+import { isUnlocked } from './appUnlocks'
 
 // Per-tick probabilities (the world ticks every ~3s from Phone). Tuned so the
 // arrival rate roughly matches the old per-app cadence.
@@ -13,11 +14,16 @@ const EBAY_OFFER_CHANCE = 0.045      // per eligible Best Offer listing
 // and writes the stores via getState so it's safe to call from a bare timer.
 export function runWorldTick() {
   const now = Date.now()
-  const { collection, updateCard } = useGameStore.getState()
+  const { collection, updateCard, level } = useGameStore.getState()
   const push = useNotificationStore.getState().push
 
+  // Locked apps don't generate any activity — no offers for marketplaces the
+  // player can't even open yet.
+  const igOpen = isUnlocked('instagram', level)
+  const ebayOpen = isUnlocked('ebay', level)
+
   // ── Instagram: follow-up nudges on offers you've left sitting ──
-  collection.forEach(card => {
+  if (igOpen) collection.forEach(card => {
     if (card.sold) return
     const offers = card.igOffers
     if (!offers || !offers.length) return
@@ -38,7 +44,7 @@ export function runWorldTick() {
 
   // ── Instagram: an out-of-the-blue DM about a card you never listed ──
   const pendingUns = collection.filter(c => !c.sold && (c.igOffers || []).some(o => o.unsolicited && o.status === 'pending' && o.expiresAt > now)).length
-  if (pendingUns < 2 && Math.random() < IG_UNSOLICITED_CHANCE) {
+  if (igOpen && pendingUns < 2 && Math.random() < IG_UNSOLICITED_CHANCE) {
     const candidates = collection.filter(c => !c.sold && !c.listed && !c.igPostedAt && !(c.igOffers && c.igOffers.length))
     if (candidates.length) {
       const card = candidates[Math.floor(Math.random() * candidates.length)]
@@ -49,7 +55,7 @@ export function runWorldTick() {
   }
 
   // ── eBay: expire stale Best Offers, occasionally surface a new one ──
-  collection.forEach(c => {
+  if (ebayOpen) collection.forEach(c => {
     if (!(c.platform === 'ebay' && c.listed && !c.sold && c.ebayBestOffer)) return
     let offers = c.ebayOffers || []
     let changed = false
