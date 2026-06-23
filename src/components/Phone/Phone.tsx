@@ -18,8 +18,19 @@ const APPS: Record<Exclude<AppId, 'home' | 'settings'>, React.ComponentType> = {
   'paypal': PayPalApp,
 }
 
+const BANNER_LABELS: Record<AppId, string> = {
+  'home': 'Gem Pulls', 'settings': 'Settings', 'pack-market': 'Pack Market',
+  'ebay': 'eBay', 'instagram': 'Instagram', 'whatnot': 'Whatnot', 'paypal': 'PayPal',
+}
+
 const APP_ICONS: Record<AppId, React.ReactNode> = {
-  'home': null,
+  'home': (
+    <svg viewBox="0 0 60 60" width="28" height="28">
+      <rect width="60" height="60" rx="13" fill="#7b2ff7"/>
+      <path d="M30 13l11 9-11 25-11-25z" fill="#fff" fillOpacity="0.95"/>
+      <path d="M19 22h22l-11 9z" fill="#fff" fillOpacity="0.45"/>
+    </svg>
+  ),
   'settings': null,
   'pack-market': (
     <svg viewBox="0 0 60 60" fill="none" width="28" height="28">
@@ -63,13 +74,36 @@ const APP_ICONS: Record<AppId, React.ReactNode> = {
   ),
 }
 
+const LEVEL_NAMES: Record<number, string> = { 1: 'Rookie', 2: 'Flipper', 3: 'Trader', 4: 'Mogul' }
+
 export default function Phone() {
   const { activeApp, openApp, closeApp } = usePhoneStore()
   const { wallpaper } = useGameStore()
+  const level = useGameStore(s => s.level)
+  const bankroll = useGameStore(s => s.bankroll)
   const notifications = useNotificationStore(s => s.notifications)
+  const pushNotif = useNotificationStore(s => s.push)
   const [time, setTime] = useState(() =>
     new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
   )
+
+  // Level-up celebration — fires when level climbs (not on reset).
+  const prevLevel = useRef(level)
+  useEffect(() => {
+    if (level > prevLevel.current) {
+      pushNotif('home', `Level ${level} — ${LEVEL_NAMES[level] ?? 'Pro'}!`, 'You leveled up. Bigger packs and apps await.')
+    }
+    prevLevel.current = level
+  }, [level])
+
+  // Low-funds warning — fires once when balance drops below $100.
+  const prevBankroll = useRef(bankroll)
+  useEffect(() => {
+    if (prevBankroll.current >= 100 && bankroll < 100) {
+      pushNotif('paypal', 'Funds running low', `Balance is $${bankroll.toFixed(2)}. Sell some cards to recover.`)
+    }
+    prevBankroll.current = bankroll
+  }, [bankroll])
 
   // Banner state
   const [banner, setBanner] = useState<Notification | null>(null)
@@ -236,7 +270,7 @@ export default function Phone() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
                 <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  {banner.appId === 'pack-market' ? 'Pack Market' : banner.appId === 'ebay' ? 'eBay' : banner.appId}
+                  {BANNER_LABELS[banner.appId] ?? banner.appId}
                 </span>
                 <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>now</span>
               </div>
