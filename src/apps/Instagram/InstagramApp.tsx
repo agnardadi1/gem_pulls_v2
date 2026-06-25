@@ -293,11 +293,6 @@ export default function InstagramApp() {
     const postedAt = Date.now()
     const offers = genIgOffers(card, postedAt)
     updateCard(card.cid, { listed: true, platform: 'instagram', igPostedAt: postedAt, igOffers: offers })
-    const first = offers[0]
-    if (first) {
-      const delay = first.arrivedAt - Date.now()
-      if (delay > 0) setTimeout(() => pushNotif('instagram', 'New DM', `@${first.user} sent you an offer on ${card.playerName}`), delay)
-    }
     setOverlay(null)
     setTab('home')
   }

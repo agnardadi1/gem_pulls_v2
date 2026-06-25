@@ -20,14 +20,25 @@ export function runWorldTick() {
   const igOpen = isUnlocked('instagram', level)
   const ebayOpen = isUnlocked('ebay', level)
 
-  // ── Instagram: follow-up nudges on offers you've left sitting ──
+  // ── Instagram: arrival notifications + follow-up nudges ──
   if (igOpen) collection.forEach(card => {
     if (card.sold) return
     const offers = card.igOffers
     if (!offers || !offers.length) return
     let changed = false
     const next = offers.map(o => {
-      if (o.status !== 'pending' || o.arrivedAt > now || o.expiresAt <= now) return o
+      if (o.arrivedAt > now) return o  // not yet arrived
+
+      // Fire arrival notification exactly once
+      if (!o.notified) {
+        push('instagram', 'New DM', `@${o.user} sent you an offer on ${card.playerName}`)
+        changed = true
+        return { ...o, notified: true }
+      }
+
+      if (o.status !== 'pending' || o.expiresAt <= now) return o
+
+      // Follow-up nudges for pending offers left sitting
       const frac = (now - o.arrivedAt) / (o.expiresAt - o.arrivedAt)
       const want = frac > 0.75 ? 2 : frac > 0.4 ? 1 : 0
       const have = o.followUps?.length ?? 0

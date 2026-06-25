@@ -71,6 +71,7 @@ export interface IgOffer {
   status: 'pending' | 'accepted' | 'declined' | 'expired'
   unsolicited?: boolean              // DM about a card you never listed
   followUps?: { text: string; at: number }[] // nudges if you ignore them
+  notified?: boolean                 // arrival notification already fired
 }
 
 export interface EbayRep {
